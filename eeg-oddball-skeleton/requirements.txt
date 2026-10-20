@@ -1,0 +1,18 @@
+# Cài: pip install -r requirements.txt && pip install -e .
+# Sau khi cả nhóm chạy được, TV1 chạy `pip freeze > requirements-lock.txt` và commit để chốt phiên bản.
+numpy
+pandas
+scipy
+scikit-learn
+matplotlib
+seaborn
+mne
+mne-bids
+osl-ephys
+python-picard
+torch
+captum
+antropy
+PyWavelets
+pytest
+# Tùy chọn (mở rộng HMM, cần môi trường riêng nếu xung đột TensorFlow): osl-dynamics

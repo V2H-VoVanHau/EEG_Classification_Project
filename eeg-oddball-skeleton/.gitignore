@@ -1,0 +1,19 @@
+# Dữ liệu và kết quả trung gian: lớn, tái tạo được bằng script → không commit
+data/*
+!data/README.md
+derivatives/
+*.fif
+*.pt
+*.npy
+
+# Python
+__pycache__/
+*.egg-info/
+.ipynb_checkpoints/
+.venv/
+.env
+
+# Hệ điều hành / IDE
+.DS_Store
+.vscode/
+.idea/

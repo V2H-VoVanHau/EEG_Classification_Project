@@ -56,7 +56,7 @@ data/ds004621 ──01──▶ derivatives/clean_raw ──02──▶ derivati
                                                                       └─05─▶ figures/fig9, fig10 (+ mô hình .pt của bước 04)
 ```
 
-## Cài đặt (mỗi người làm 1 lần)
+## Cài đặt
 
 ```bash
 git clone <url-repo> && cd eeg-oddball-project
@@ -67,15 +67,9 @@ pip install -e .              # để mọi script import được `eegoddball` 
 
 ## Năm luật của repo
 
-1. **Một file, một chủ** (chủ file ghi ở cột bên phải cây thư mục). Muốn đổi file của người khác → mở issue hoặc PR.
 2. **Tham số chỉ nằm trong `config.py`.** Không viết cứng dải lọc, seed, đường dẫn trong script.
 3. **Tập test chỉ do `splits/folds.json` quy định**, theo `trial_id` (mã gốc của kích thích), không theo vị trí.
    Ở mỗi fold: bỏ tập test ra trước → tách validation từ phần còn lại → huấn luyện → dự đoán test đúng 1 lần.
 4. **Mô hình chỉ nộp dự đoán, TV1 chấm điểm.** Mọi file dự đoán ghi qua `PredictionWriter`; máy chấm từ chối
    nếu các mô hình không thi cùng tập test, hoặc lẫn phiên bản dữ liệu/folds.
-5. **Không commit dữ liệu.** Mỗi người một nhánh (`tv2-ica`, `tv4-eegnet`...), PR nhỏ.
 
-## Việc cần làm ngay tuần 1
-
-- [ ] TV2 mở `events.tsv` thật, sửa `EVENT_COLUMN` và `EVENT_MAP` trong `config.py` (qua PR cho TV1)
-- [ ] TV1 tạo `config.py`, `folds.json` và dữ liệu nháp v0

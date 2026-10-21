@@ -15,4 +15,5 @@ captum
 antropy
 PyWavelets
 pytest
+awscli
 # Tùy chọn (mở rộng HMM, cần môi trường riêng nếu xung đột TensorFlow): osl-dynamics

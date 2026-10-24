@@ -28,7 +28,7 @@ def create_folds():
         if not os.path.exists(fif_path): 
             fif_path = os.path.join(v0_dir, f"sub-{sub}_task-oddball-epo.fif")
         if not os.path.exists(fif_path):
-            print(f"chưa thấy file {fif-path}, bỏ qua sub-{sub}")
+            print(f"chưa thấy file {fif_path}, bỏ qua sub-{sub}")
             continue
         
         epochs = mne.read_epochs(fif_path, preload=False, verbose=False)

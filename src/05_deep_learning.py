@@ -2,24 +2,28 @@
 05_deep_learning.py — TV4 · Học sâu (EEGNet)
 Chủ file: TV4. Người review: TV5 (theo vòng review 13.1.9).
 
-Phạm vi tuần 1–2
-  * EEGNet bằng PyTorch — TV5 import được lớp này mà không phải sửa (xem load_model()).
-  * Vòng 5 bước theo folds.json của TV1, cho cả within-subject và cross-subject.
-  * Validation tách từ phần train (20 %, giữ tỷ lệ lớp, seed 42), early stopping trên validation.
-  * Xuất results/predictions_tv4.csv đúng hợp đồng 13.1.5 (TV1 chấm điểm, TV4 không tự chấm).
-  * Lưu mô hình .pt + danh sách test + thông số chuẩn hóa + meta cho TV5.
-  * Lưu lịch sử loss từng epoch (dùng cho learning curves tuần 5).
+Phạm vi tuần 1–3
+  * Tuần 1: EEGNet bằng PyTorch, chạy được trên v0 của 1 người.
+  * Tuần 2: vòng 5 bước theo folds.json của TV1; trọng số lớp; validation tách từ phần train
+    (20 %, giữ tỷ lệ lớp, seed 42); early stopping trên validation; xuất results/predictions_tv4.csv
+    đúng hợp đồng 13.1.5 (TV1 chấm điểm, TV4 không tự chấm).
+  * Tuần 3: within-subject và cross-subject, 3 seed; gói bàn giao cho TV5 (13.1.6) trong
+    derivatives/models/: <stem>.pt + _test.npz (trial_id test) + _norm.npz + _meta.json;
+    lịch sử loss từng epoch ở results/history_tv4.csv (learning curves tuần 5).
 
 Cách chạy (từ thư mục gốc dự án)
-  python src/05_deep_learning.py --scheme within --subjects 01 --seeds 0   # mốc tuần 1: 1 người, 1 seed
-  python src/05_deep_learning.py --scheme within                            # mọi người, mọi seed
-  python src/05_deep_learning.py --scheme cross
+  python src/05_deep_learning.py --scheme within --subjects 03 --seeds 0   # mốc tuần 1: 1 người, 1 seed
+  python src/05_deep_learning.py --scheme both                              # within + cross, mọi seed
+  python src/05_deep_learning.py --scheme cross --val-by-subject           # validation tách theo người
   python src/05_deep_learning.py --scheme within --dry-run                  # không cần torch: chỉ kiểm tra
                                                                             # fold / validation / định dạng file
+  python -m pytest tests/test_deep_learning.py -q                           # kiểm thử trên dữ liệu giả
 
-Các khóa đọc từ config.py của TV1 (thiếu khóa nào thì dùng giá trị mặc định bên dưới và in cảnh báo):
-  DATA_VERSION ("v0"/"v1"), EPOCHS_DIR, FOLDS_PATH, RESULTS_DIR, MODELS_DIR,
+Các khóa đọc từ src/eegoddball/config.py của TV1 (thiếu khóa nào thì dùng mặc định bên dưới và cảnh báo):
+  DATA_VERSION ("v0"/"v1"), DERIVATIVES_DIR, EPOCHS_DIR, SPLIT_DIR, FOLDS_PATH, RESULTS_DIR, MODELS_DIR,
   SUBJECTS, SEED (42), VAL_SIZE (0.2), DL_SEEDS, FOLDS_HASH (chuỗi hoặc hàm).
+folds.json: đọc được cả dạng trong tài liệu ({"within", "cross"}) lẫn dạng TV1 đang commit
+  ({"within_subject": {"03": {"fold_0": {"test_trail_ids": [...]}}}, "cross_subject": {...}}).
 """
 from __future__ import annotations
 
@@ -71,11 +75,22 @@ def cfg(name, default):
     return default
 
 
+def _default_folds_path():
+    # Tài liệu gọi là folds.json; bản TV1 đang commit tên là splits/fold.json
+    split_dir = Path(cfg("SPLIT_DIR", PROJECT_ROOT / "splits"))
+    for name in ("folds.json", "fold.json"):
+        if (split_dir / name).exists():
+            return split_dir / name
+    return split_dir / "folds.json"
+
+
 DATA_VERSION = cfg("DATA_VERSION", "v0")
-EPOCHS_DIR = Path(cfg("EPOCHS_DIR", PROJECT_ROOT / "derivatives" / DATA_VERSION))
-FOLDS_PATH = Path(cfg("FOLDS_PATH", PROJECT_ROOT / "splits" / "folds.json"))
+DATA_DIR = Path(cfg("DATA_DIR", PROJECT_ROOT / "data" / "ds004621"))   # chỉ dùng cho _relabel_from_bids
+DERIVATIVES_DIR = Path(cfg("DERIVATIVES_DIR", PROJECT_ROOT / "derivatives"))
+EPOCHS_DIR = Path(cfg("EPOCHS_DIR", DERIVATIVES_DIR / DATA_VERSION))
+FOLDS_PATH = Path(cfg("FOLDS_PATH", _default_folds_path()))
 RESULTS_DIR = Path(cfg("RESULTS_DIR", PROJECT_ROOT / "results"))
-MODELS_DIR = Path(cfg("MODELS_DIR", PROJECT_ROOT / "models"))
+MODELS_DIR = Path(cfg("MODELS_DIR", DERIVATIVES_DIR / "models"))  # README: mô hình nằm trong derivatives/
 SEED = cfg("SEED", 42)            # seed của quy tắc tách validation (chung cả nhóm)
 VAL_SIZE = cfg("VAL_SIZE", 0.2)
 DL_SEEDS = list(cfg("DL_SEEDS", [0, 1, 2]))  # seed khởi tạo mạng; 3–5 seed theo 13.1.2
@@ -85,6 +100,7 @@ SFREQ_DL = 128.0                  # Hz — hạ mẫu cho học sâu (9.2)
 BASELINE = (-0.2, 0.0)            # s — hiệu chỉnh đường nền như Phần 6
 TMIN, TMAX = 0.0, 0.8             # s — cửa sổ đưa vào mạng → 103 mẫu ở 128 Hz
 EVENT_NEG, EVENT_POS = "standard", "target"   # tên sự kiện theo hợp đồng dữ liệu 13.1.7
+EVENT_RAW_CODES = {"standard": ("S  5", "S 5"), "target": ("S  6", "S 6")}  # task-oddball_events.json
 
 ARCH = dict(F1=8, D=2, F2=16, k1=64, drop=0.5)  # k1 = 64 mẫu = 0,5 s ở 128 Hz
 TRAIN = dict(batch_size=64, lr=1e-3, max_epochs=150, patience=20)
@@ -143,6 +159,43 @@ def norm_sub(s) -> str:
     return s[4:] if s.startswith("sub-") else s
 
 
+def _event_codes(event_id: dict, name: str) -> list[int]:
+    """Mã sự kiện ứng với một lớp: tên theo hợp đồng ("target", cả dạng "Stimulus/target")
+    hoặc mã gốc BrainVision trong events.tsv của ds004621 (S 5 standard, S 6 target)."""
+    aliases = {name, *EVENT_RAW_CODES.get(name, ())}
+    return [v for k, v in event_id.items()
+            if k in aliases or any(part.strip() in aliases for part in k.split("/"))]
+
+
+def _relabel_from_bids(sub: str, ep):
+    """Dự phòng cho v0 hiện tại: read_raw_bids lấy annotation từ cột trial_type nên epochs chỉ còn
+    "stimulus"/"response". Khớp thời điểm từng epoch với events.tsv để lấy lại loại kích thích từ
+    cột event_type. Không đổi số epoch hay thứ tự (trial_id theo vị trí vẫn khớp folds.json)."""
+    tsv = DATA_DIR / f"sub-{sub}" / "eeg" / f"sub-{sub}_task-oddball_events.tsv"
+    if not tsv.exists():
+        return ep
+    ev = pd.read_csv(tsv, sep="\t")
+    names = {**{c: EVENT_NEG for c in EVENT_RAW_CODES[EVENT_NEG]},
+             **{c: EVENT_POS for c in EVENT_RAW_CODES[EVENT_POS]}}
+    onsets = ev["onset"].to_numpy(float)
+    t = ep.events[:, 0] / ep.info["sfreq"]   # BrainVision: first_samp = 0; kiểm tra khớp ≥ 99 % bên dưới
+    nearest = np.abs(onsets[None, :] - t[:, None]).argmin(axis=1)
+    tol = 1.5 / ep.info["sfreq"]
+    ok = np.abs(onsets[nearest] - t) <= tol
+    if ok.mean() < 0.99:
+        warnings.warn(f"sub-{sub}: chỉ khớp được {ok.mean():.0%} epoch với events.tsv — không gán lại nhãn.")
+        return ep
+    label = np.array([names.get(e, "other") for e in ev["event_type"].to_numpy()[nearest]])
+    codes = {EVENT_NEG: 1, EVENT_POS: 2, "other": 99}
+    old_event_id = dict(ep.event_id)
+    ep = ep.copy()
+    ep.events[:, 2] = [codes[x] for x in label]
+    ep.event_id = {k: v for k, v in codes.items() if v in set(ep.events[:, 2])}
+    warnings.warn(f"sub-{sub}: epochs không có nhãn standard/target (event_id={old_event_id}) — "
+                  "đã lấy nhãn từ cột event_type của events.tsv. TV1 cần sửa v0.")
+    return ep
+
+
 def load_subject(sub: str) -> dict:
     """Đọc epochs v0/v1 của một người → mảng cho học sâu.
     Trả về X (n_trials, n_ch, n_times) đơn vị µV, y (1 = target), trial_id gốc (0–659)."""
@@ -153,9 +206,22 @@ def load_subject(sub: str) -> dict:
         raise FileNotFoundError(f"Cần đúng 1 file sub-{sub}*-epo.fif trong {EPOCHS_DIR}, thấy {files}")
     ep = mne.read_epochs(files[0], preload=True, verbose="error")
     if ep.metadata is None or "trial_id" not in ep.metadata:
-        raise ValueError(f"{files[0].name}: thiếu cột trial_id trong metadata (hợp đồng 13.1.3)")
+        # v0 hiện tại chưa gắn trial_id; folds.json của TV1 đánh số theo vị trí epoch trong file
+        # (np.arange(len(epochs))), nên dùng đúng vị trí đó — trước khi lọc lớp.
+        warnings.warn(f"{files[0].name}: metadata chưa có trial_id — dùng vị trí epoch trong file "
+                      "(khớp folds.json hiện tại, nhưng KHÔNG bền khi v1 loại epoch; báo TV1/TV2).")
+        meta = ep.metadata.copy() if ep.metadata is not None else pd.DataFrame(index=range(len(ep)))
+        meta["trial_id"] = np.arange(len(ep))
+        ep.metadata = meta.reset_index(drop=True)
 
-    ep = ep[[EVENT_NEG, EVENT_POS]]                 # bài toán chính: frequent vs target
+    neg_codes, pos_codes = _event_codes(ep.event_id, EVENT_NEG), _event_codes(ep.event_id, EVENT_POS)
+    if not neg_codes or not pos_codes:
+        ep = _relabel_from_bids(sub, ep)
+        neg_codes, pos_codes = _event_codes(ep.event_id, EVENT_NEG), _event_codes(ep.event_id, EVENT_POS)
+    if not neg_codes or not pos_codes:
+        raise ValueError(f"{files[0].name}: không tìm thấy sự kiện {EVENT_NEG}/{EVENT_POS} "
+                         f"trong event_id={ep.event_id} (hợp đồng 13.1.7)")
+    ep = ep[np.isin(ep.events[:, 2], neg_codes + pos_codes)]   # bài toán chính: frequent vs target
     if ep.baseline is None:
         ep.apply_baseline(BASELINE, verbose="error")
     if not np.isclose(ep.info["sfreq"], SFREQ_DL):
@@ -163,9 +229,7 @@ def load_subject(sub: str) -> dict:
     ep.crop(TMIN, TMAX)
 
     X = (ep.get_data(picks="eeg") * 1e6).astype(np.float32)   # V → µV
-    pos_code = ep.event_id[EVENT_POS] if EVENT_POS in ep.event_id else \
-        [v for k, v in ep.event_id.items() if EVENT_POS in k.split("/")][0]
-    y = (ep.events[:, 2] == pos_code).astype(np.int64)
+    y = np.isin(ep.events[:, 2], pos_codes).astype(np.int64)
     trial_id = ep.metadata["trial_id"].to_numpy().astype(np.int64)
     ch_names = [ep.ch_names[i] for i in mne.pick_types(ep.info, eeg=True)]
     return dict(X=X, y=y, trial_id=trial_id, ch_names=ch_names,
@@ -191,24 +255,59 @@ def load_folds() -> tuple[dict, str]:
     return folds, str(h)
 
 
+# Đọc được cả hai cách viết folds.json:
+#   tài liệu 13.1.3 : {"within": {"01": [{"test": [...]}, ...]}, "cross": [{"test": ["01"]}, ...]}
+#   bản TV1 commit  : {"within_subject": {"03": {"fold_0": {"test_trail_ids": [...]}}},
+#                      "cross_subject": {"fold_0": {"test_subjects": ["01"]}}}
+_TEST_KEYS = ("test", "test_trial_ids", "test_trail_ids", "test_subjects")
+
+
+def _section(folds, scheme):
+    for key in (scheme, f"{scheme}_subject"):
+        if key in folds:
+            return folds[key]
+    raise KeyError(f"folds.json không có mục '{scheme}' (thấy {list(folds)})")
+
+
+def _fold_list(entries) -> list:
+    """Danh sách fold theo thứ tự k = 0, 1, ...; nhận list hoặc dict {"fold_0": ...}."""
+    if isinstance(entries, dict):
+        keys = sorted(entries, key=lambda s: int(str(s).rsplit("_", 1)[-1]))
+        return [entries[k] for k in keys]
+    return list(entries)
+
+
 def _test_list(entry):
-    return entry["test"] if isinstance(entry, dict) else entry
+    if isinstance(entry, dict):
+        for key in _TEST_KEYS:
+            if key in entry:
+                return entry[key]
+        raise KeyError(f"fold không có khóa tập test nào trong {_TEST_KEYS}: {list(entry)}")
+    return entry
 
 
-def _within_entry(folds, sub):
-    w = folds["within"]
+def _within_entry(folds, sub) -> list:
+    w = _section(folds, "within")
     for key in (sub, f"sub-{sub}", str(int(sub)) if sub.isdigit() else None):
         if key is not None and key in w:
-            return w[key]
-    raise KeyError(f"folds.json không có within cho sub-{sub}")
+            return _fold_list(w[key])
+    raise KeyError(f"folds.json không có within cho sub-{sub} (có: {list(w)})")
+
+
+def within_subjects(folds) -> list[str]:
+    return [norm_sub(s) for s in _section(folds, "within")]
 
 
 def within_test_ids(folds, sub, k) -> np.ndarray:
     return np.asarray(_test_list(_within_entry(folds, sub)[k]), dtype=np.int64)
 
 
+def n_cross_folds(folds) -> int:
+    return len(_fold_list(_section(folds, "cross")))
+
+
 def cross_test_subjects(folds, k) -> list[str]:
-    return [norm_sub(s) for s in _test_list(folds["cross"][k])]
+    return [norm_sub(s) for s in _test_list(_fold_list(_section(folds, "cross"))[k])]
 
 
 def split_validation(rest_idx, y, groups=None):
@@ -435,7 +534,11 @@ def run_fold(*, scheme, fold, X, y, trial_id, subject, test_mask, seeds, device,
 
 def run_within(subjects, folds, folds_hash, seeds, device, args):
     preds, hist = [], []
+    in_folds = set(within_subjects(folds))
     for sub in subjects:
+        if sub not in in_folds:
+            print(f"sub-{sub}: folds.json chưa có fold within cho người này — bỏ qua (báo TV1).")
+            continue
         d = load_subject(sub)
         check_subject_data(sub, d)
         n_folds = len(_within_entry(folds, sub))
@@ -473,7 +576,7 @@ def run_cross(subjects, folds, folds_hash, seeds, device, args):
     del data
 
     preds, hist = [], []
-    for k in range(len(folds["cross"])):
+    for k in range(n_cross_folds(folds)):
         test_subs = cross_test_subjects(folds, k)                    # 1. đọc luật của TV1
         test_mask = np.isin(subj, test_subs)
         if not test_mask.any() or test_mask.all():
@@ -523,7 +626,11 @@ def main(argv=None):
         TRAIN["max_epochs"] = args.max_epochs
 
     folds, folds_hash = load_folds()
-    subjects = [norm_sub(s) for s in (args.subjects or cfg("SUBJECTS", list(folds["within"])))]
+    if args.subjects:
+        subjects = [norm_sub(s) for s in args.subjects]
+    else:  # mặc định: người trong SUBJECTS của config mà đã có file epochs (v0 mới có 3 người)
+        subjects = [norm_sub(s) for s in cfg("SUBJECTS", within_subjects(folds))
+                    if any(EPOCHS_DIR.glob(f"sub-{norm_sub(s)}*-epo.fif"))]
     seeds = args.seeds if args.seeds else DL_SEEDS
     device = get_device()
     print(f"data={DATA_VERSION} ({EPOCHS_DIR}) | folds_hash={folds_hash} | device={device} | "

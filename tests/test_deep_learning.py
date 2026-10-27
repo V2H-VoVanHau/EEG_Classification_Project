@@ -51,7 +51,7 @@ def make_epochs(path, sub, n=200, seed=0, with_trial_id=True):
 def tv1_folds(subs, n=200, k=5, seed=42):
     """Đúng định dạng splits/fold.json mà TV1 đang commit."""
     rng = np.random.default_rng(seed)
-    within = {s: {f"fold_{i}": {"test_trail_ids": sorted(map(int, part))}
+    within = {s: {f"fold_{i}": {"test_trial_ids": sorted(map(int, part))}
                   for i, part in enumerate(np.array_split(rng.permutation(n), k))} for s in subs}
     cross = {f"fold_{i}": {"test_subjects": [s]} for i, s in enumerate(subs)}
     return {"within_subject": within, "cross_subject": cross}
@@ -60,7 +60,7 @@ def tv1_folds(subs, n=200, k=5, seed=42):
 def doc_folds(subs, n=200, k=5, seed=42):
     """Định dạng trong tài liệu 13.1.3: within dạng list, cross dạng list."""
     tv1 = tv1_folds(subs, n, k, seed)
-    within = {s: [{"test": f["test_trail_ids"]} for f in folds.values()]
+    within = {s: [{"test": f["test_trial_ids"]} for f in folds.values()]
               for s, folds in tv1["within_subject"].items()}
     cross = [{"test": f["test_subjects"]} for f in tv1["cross_subject"].values()]
     return {"within": within, "cross": cross}
@@ -80,43 +80,30 @@ def test_fold_keys_sorted_numerically(dl):
     assert [int(dl.within_test_ids(folds, "01", k)[0]) for k in range(4)] == [0, 1, 2, 10]
 
 
-def test_positional_trial_id_when_metadata_missing(dl):
-    kind = make_epochs(dl.EPOCHS_DIR, "01", with_trial_id=False)
-    with pytest.warns(UserWarning, match="trial_id"):
-        d = dl.load_subject("01")
-    keep = np.flatnonzero(kind != "distractor")       # vị trí trong file gốc, trước khi lọc lớp
+def test_missing_trial_id_is_an_error(dl):
+    """Không đánh số theo vị trí: v1 loại epoch nên vị trí lệch khỏi folds.json (13.1.3)."""
+    make_epochs(dl.EPOCHS_DIR, "01", with_trial_id=False)
+    with pytest.raises(ValueError, match="trial_id"):
+        dl.load_subject("01")
+
+
+def test_load_subject_keeps_trial_id_and_drops_distractor(dl):
+    kind = make_epochs(dl.EPOCHS_DIR, "01")
+    d = dl.load_subject("01")
+    keep = np.flatnonzero(kind != "distractor")
     np.testing.assert_array_equal(d["trial_id"], keep)
     np.testing.assert_array_equal(d["y"], (kind[keep] == "target").astype(int))
     assert d["X"].shape[1:] == (8, 103)               # 128 Hz, 0..0,8 s
 
 
-def test_relabel_from_bids_events_like_current_v0(dl, tmp_path, monkeypatch):
-    """v0 hiện tại: event_id chỉ có stimulus/response, không metadata → lấy nhãn từ events.tsv."""
-    rng = np.random.default_rng(1)
-    sfreq, n = 250.0, 120
-    raw_code = rng.choice(["S  5", "S  6", "S  7", "S  1"], size=n, p=[0.6, 0.15, 0.15, 0.1])
-    raw_code[:2] = ["S  5", "S  6"]
-    onset = 2.0 + np.arange(n) * 1.3
-    bids = tmp_path / "bids" / "sub-01" / "eeg"
-    bids.mkdir(parents=True)
-    pd.DataFrame(dict(onset=onset, duration="n/a", event_type=raw_code,
-                      trial_type=np.where(raw_code == "S  1", "response", "stimulus"))
-                 ).to_csv(bids / "sub-01_task-oddball_events.tsv", sep="\t", index=False)
-    monkeypatch.setattr(dl, "DATA_DIR", tmp_path / "bids")
-
-    event_id = {"response": 10001, "stimulus": 10002}
-    codes = np.where(raw_code == "S  1", 10001, 10002)
-    events = np.c_[np.round(onset * sfreq).astype(int), np.zeros(n, int), codes]
-    info = mne.create_info([f"E{i}" for i in range(4)], sfreq, "eeg")
-    X = rng.normal(0, 1e-5, (n, 4, 251))
-    mne.EpochsArray(X, info, events=events, tmin=-0.2, event_id=event_id, verbose="error").save(
-        dl.EPOCHS_DIR / "sub-01_task-oddball-epo.fif", verbose="error")
-
-    with pytest.warns(UserWarning):
-        d = dl.load_subject("01")
-    keep = np.flatnonzero(np.isin(raw_code, ["S  5", "S  6"]))
-    np.testing.assert_array_equal(d["trial_id"], keep)          # vị trí trong file v0
-    np.testing.assert_array_equal(d["y"], (raw_code[keep] == "S  6").astype(int))
+def test_rows_from_other_folds_hash_are_dropped(dl):
+    path = dl.RESULTS_DIR / "predictions_tv4.csv"
+    row = dict(scheme="within", subject="01", fold=0, model="EEGNet", seed=42, trial_id=1,
+               y_true=1, y_score=0.9, data_version="v0", folds_hash="OLD")
+    dl.write_predictions(pd.DataFrame([row]), path)
+    dl.write_predictions(pd.DataFrame([dict(row, seed=43, folds_hash="NEW")]), path)
+    out = pd.read_csv(path)
+    assert out.folds_hash.unique().tolist() == ["NEW"] and out.seed.tolist() == [43]
 
 
 def test_within_end_to_end_no_leakage_and_bundle(dl):

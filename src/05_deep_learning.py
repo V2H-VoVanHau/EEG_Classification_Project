@@ -12,7 +12,7 @@ Phạm vi tuần 1–3
     lịch sử loss từng epoch ở results/history_tv4.csv (learning curves tuần 5).
 
 Cách chạy (từ thư mục gốc dự án)
-  python src/05_deep_learning.py --scheme within --subjects 03 --seeds 0   # mốc tuần 1: 1 người, 1 seed
+  python src/05_deep_learning.py --scheme within --subjects 01 --seeds 42  # mốc tuần 1: 1 người, 1 seed
   python src/05_deep_learning.py --scheme both                              # within + cross, mọi seed
   python src/05_deep_learning.py --scheme cross --val-by-subject           # validation tách theo người
   python src/05_deep_learning.py --scheme within --dry-run                  # không cần torch: chỉ kiểm tra
@@ -23,7 +23,8 @@ Các khóa đọc từ src/eegoddball/config.py của TV1 (thiếu khóa nào th
   DATA_VERSION ("v0"/"v1"), DERIVATIVES_DIR, EPOCHS_DIR, SPLIT_DIR, FOLDS_PATH, RESULTS_DIR, MODELS_DIR,
   SUBJECTS, SEED (42), VAL_SIZE (0.2), DL_SEEDS, FOLDS_HASH (chuỗi hoặc hàm).
 folds.json: đọc được cả dạng trong tài liệu ({"within", "cross"}) lẫn dạng TV1 đang commit
-  ({"within_subject": {"03": {"fold_0": {"test_trail_ids": [...]}}}, "cross_subject": {...}}).
+  ({"within_subject": {"01": {"fold_0": {"test_trial_ids": [...]}}}, "cross_subject": {...}}).
+  folds_hash = sha256 đầy đủ của folds.json (giống config.get_folds_hash của TV1).
 """
 from __future__ import annotations
 
@@ -75,32 +76,21 @@ def cfg(name, default):
     return default
 
 
-def _default_folds_path():
-    # Tài liệu gọi là folds.json; bản TV1 đang commit tên là splits/fold.json
-    split_dir = Path(cfg("SPLIT_DIR", PROJECT_ROOT / "splits"))
-    for name in ("folds.json", "fold.json"):
-        if (split_dir / name).exists():
-            return split_dir / name
-    return split_dir / "folds.json"
-
-
 DATA_VERSION = cfg("DATA_VERSION", "v0")
-DATA_DIR = Path(cfg("DATA_DIR", PROJECT_ROOT / "data" / "ds004621"))   # chỉ dùng cho _relabel_from_bids
 DERIVATIVES_DIR = Path(cfg("DERIVATIVES_DIR", PROJECT_ROOT / "derivatives"))
 EPOCHS_DIR = Path(cfg("EPOCHS_DIR", DERIVATIVES_DIR / DATA_VERSION))
-FOLDS_PATH = Path(cfg("FOLDS_PATH", _default_folds_path()))
+FOLDS_PATH = Path(cfg("FOLDS_PATH", Path(cfg("SPLIT_DIR", PROJECT_ROOT / "splits")) / "folds.json"))
 RESULTS_DIR = Path(cfg("RESULTS_DIR", PROJECT_ROOT / "results"))
 MODELS_DIR = Path(cfg("MODELS_DIR", DERIVATIVES_DIR / "models"))  # README: mô hình nằm trong derivatives/
 SEED = cfg("SEED", 42)            # seed của quy tắc tách validation (chung cả nhóm)
 VAL_SIZE = cfg("VAL_SIZE", 0.2)
-DL_SEEDS = list(cfg("DL_SEEDS", [0, 1, 2]))  # seed khởi tạo mạng; 3–5 seed theo 13.1.2
+DL_SEEDS = list(cfg("DL_SEEDS", [42, 43, 44]))  # seed khởi tạo mạng; 3–5 seed theo 13.1.2
 
 # Tham số riêng của học sâu (TV4 sở hữu). Ghi đúng các con số này vào mục 3.5 của báo cáo.
 SFREQ_DL = 128.0                  # Hz — hạ mẫu cho học sâu (9.2)
 BASELINE = (-0.2, 0.0)            # s — hiệu chỉnh đường nền như Phần 6
 TMIN, TMAX = 0.0, 0.8             # s — cửa sổ đưa vào mạng → 103 mẫu ở 128 Hz
 EVENT_NEG, EVENT_POS = "standard", "target"   # tên sự kiện theo hợp đồng dữ liệu 13.1.7
-EVENT_RAW_CODES = {"standard": ("S  5", "S 5"), "target": ("S  6", "S 6")}  # task-oddball_events.json
 
 ARCH = dict(F1=8, D=2, F2=16, k1=64, drop=0.5)  # k1 = 64 mẫu = 0,5 s ở 128 Hz
 TRAIN = dict(batch_size=64, lr=1e-3, max_epochs=150, patience=20)
@@ -160,40 +150,8 @@ def norm_sub(s) -> str:
 
 
 def _event_codes(event_id: dict, name: str) -> list[int]:
-    """Mã sự kiện ứng với một lớp: tên theo hợp đồng ("target", cả dạng "Stimulus/target")
-    hoặc mã gốc BrainVision trong events.tsv của ds004621 (S 5 standard, S 6 target)."""
-    aliases = {name, *EVENT_RAW_CODES.get(name, ())}
-    return [v for k, v in event_id.items()
-            if k in aliases or any(part.strip() in aliases for part in k.split("/"))]
-
-
-def _relabel_from_bids(sub: str, ep):
-    """Dự phòng cho v0 hiện tại: read_raw_bids lấy annotation từ cột trial_type nên epochs chỉ còn
-    "stimulus"/"response". Khớp thời điểm từng epoch với events.tsv để lấy lại loại kích thích từ
-    cột event_type. Không đổi số epoch hay thứ tự (trial_id theo vị trí vẫn khớp folds.json)."""
-    tsv = DATA_DIR / f"sub-{sub}" / "eeg" / f"sub-{sub}_task-oddball_events.tsv"
-    if not tsv.exists():
-        return ep
-    ev = pd.read_csv(tsv, sep="\t")
-    names = {**{c: EVENT_NEG for c in EVENT_RAW_CODES[EVENT_NEG]},
-             **{c: EVENT_POS for c in EVENT_RAW_CODES[EVENT_POS]}}
-    onsets = ev["onset"].to_numpy(float)
-    t = ep.events[:, 0] / ep.info["sfreq"]   # BrainVision: first_samp = 0; kiểm tra khớp ≥ 99 % bên dưới
-    nearest = np.abs(onsets[None, :] - t[:, None]).argmin(axis=1)
-    tol = 1.5 / ep.info["sfreq"]
-    ok = np.abs(onsets[nearest] - t) <= tol
-    if ok.mean() < 0.99:
-        warnings.warn(f"sub-{sub}: chỉ khớp được {ok.mean():.0%} epoch với events.tsv — không gán lại nhãn.")
-        return ep
-    label = np.array([names.get(e, "other") for e in ev["event_type"].to_numpy()[nearest]])
-    codes = {EVENT_NEG: 1, EVENT_POS: 2, "other": 99}
-    old_event_id = dict(ep.event_id)
-    ep = ep.copy()
-    ep.events[:, 2] = [codes[x] for x in label]
-    ep.event_id = {k: v for k, v in codes.items() if v in set(ep.events[:, 2])}
-    warnings.warn(f"sub-{sub}: epochs không có nhãn standard/target (event_id={old_event_id}) — "
-                  "đã lấy nhãn từ cột event_type của events.tsv. TV1 cần sửa v0.")
-    return ep
+    """Mã sự kiện ứng với một lớp theo hợp đồng 13.1.7 ("target", cả dạng "Stimulus/target")."""
+    return [v for k, v in event_id.items() if k == name or name in k.split("/")]
 
 
 def load_subject(sub: str) -> dict:
@@ -206,18 +164,10 @@ def load_subject(sub: str) -> dict:
         raise FileNotFoundError(f"Cần đúng 1 file sub-{sub}*-epo.fif trong {EPOCHS_DIR}, thấy {files}")
     ep = mne.read_epochs(files[0], preload=True, verbose="error")
     if ep.metadata is None or "trial_id" not in ep.metadata:
-        # v0 hiện tại chưa gắn trial_id; folds.json của TV1 đánh số theo vị trí epoch trong file
-        # (np.arange(len(epochs))), nên dùng đúng vị trí đó — trước khi lọc lớp.
-        warnings.warn(f"{files[0].name}: metadata chưa có trial_id — dùng vị trí epoch trong file "
-                      "(khớp folds.json hiện tại, nhưng KHÔNG bền khi v1 loại epoch; báo TV1/TV2).")
-        meta = ep.metadata.copy() if ep.metadata is not None else pd.DataFrame(index=range(len(ep)))
-        meta["trial_id"] = np.arange(len(ep))
-        ep.metadata = meta.reset_index(drop=True)
+        # Không tự đánh số theo vị trí: v1 loại epoch nên vị trí sẽ lệch khỏi folds.json
+        raise ValueError(f"{files[0].name}: thiếu cột trial_id trong metadata (hợp đồng 13.1.3)")
 
     neg_codes, pos_codes = _event_codes(ep.event_id, EVENT_NEG), _event_codes(ep.event_id, EVENT_POS)
-    if not neg_codes or not pos_codes:
-        ep = _relabel_from_bids(sub, ep)
-        neg_codes, pos_codes = _event_codes(ep.event_id, EVENT_NEG), _event_codes(ep.event_id, EVENT_POS)
     if not neg_codes or not pos_codes:
         raise ValueError(f"{files[0].name}: không tìm thấy sự kiện {EVENT_NEG}/{EVENT_POS} "
                          f"trong event_id={ep.event_id} (hợp đồng 13.1.7)")
@@ -246,20 +196,22 @@ def check_subject_data(sub, d):
 # ----------------------------------------------------------------------------------------------
 def load_folds() -> tuple[dict, str]:
     folds = json.loads(FOLDS_PATH.read_text(encoding="utf-8"))
-    if C is not None and hasattr(C, "FOLDS_HASH"):
-        h = C.FOLDS_HASH() if callable(C.FOLDS_HASH) else C.FOLDS_HASH
-    else:
-        h = hashlib.sha256(FOLDS_PATH.read_bytes()).hexdigest()[:12]
-        warnings.warn("config.py chưa có FOLDS_HASH — tự tính sha256(folds.json)[:12]. "
-                      "Nhắc TV1 thêm FOLDS_HASH để TV3/TV4 dùng chung một cách tính.")
-    return folds, str(h)
+    # Cách tính của TV1: sha256 đầy đủ của folds.json. Tính lại ngay lúc chạy thay vì tin
+    # C.FOLDS_HASH (là None nếu config được import trước khi có folds.json).
+    h = hashlib.sha256(FOLDS_PATH.read_bytes()).hexdigest()
+    cfg_hash = getattr(C, "FOLDS_HASH", None) if C is not None else None
+    if callable(cfg_hash):
+        cfg_hash = cfg_hash()
+    if cfg_hash is not None and cfg_hash != h:
+        raise ValueError(f"FOLDS_HASH trong config ({cfg_hash}) khác sha256 của {FOLDS_PATH} ({h}).")
+    return folds, h
 
 
 # Đọc được cả hai cách viết folds.json:
 #   tài liệu 13.1.3 : {"within": {"01": [{"test": [...]}, ...]}, "cross": [{"test": ["01"]}, ...]}
-#   bản TV1 commit  : {"within_subject": {"03": {"fold_0": {"test_trail_ids": [...]}}},
-#                      "cross_subject": {"fold_0": {"test_subjects": ["01"]}}}
-_TEST_KEYS = ("test", "test_trial_ids", "test_trail_ids", "test_subjects")
+#   bản TV1 commit  : {"within_subject": {"01": {"fold_0": {"test_trial_ids": [...]}}},
+#                      "cross_subject": {"fold_0": {"test_subjects": ["01"]}}, "metadata": {...}}
+_TEST_KEYS = ("test", "test_trial_ids", "test_subjects")
 
 
 def _section(folds, scheme):
@@ -452,12 +404,25 @@ def load_model(stem, device="cpu"):
     return model, nrm, test, meta
 
 
+def _drop_stale(old: pd.DataFrame, new: pd.DataFrame, path: Path) -> pd.DataFrame:
+    """Bỏ dòng cũ chạy trên data_version/folds.json khác: máy chấm của TV1 từ chối file lẫn phiên bản."""
+    if not {"data_version", "folds_hash"} <= set(old.columns):
+        warnings.warn(f"{path.name}: bản cũ không có data_version/folds_hash — bỏ toàn bộ.")
+        return old.iloc[0:0]
+    cur = (str(new["data_version"].iloc[0]), str(new["folds_hash"].iloc[0]))
+    same = (old["data_version"].astype(str) == cur[0]) & (old["folds_hash"].astype(str) == cur[1])
+    if not same.all():
+        warnings.warn(f"{path.name}: bỏ {int((~same).sum())} dòng cũ chạy trên data_version/folds_hash "
+                      f"khác {cur}.")
+    return old[same]
+
+
 def write_predictions(new: pd.DataFrame, path: Path):
     """Ghi file dự đoán; chạy lại cùng (scheme, model, seed, subject, fold) thì thay dòng cũ."""
     path.parent.mkdir(parents=True, exist_ok=True)
     new = new[PRED_COLS]
     if path.exists():
-        old = pd.read_csv(path, dtype={"subject": str})
+        old = _drop_stale(pd.read_csv(path, dtype={"subject": str}), new, path)
         done = new[RUN_KEYS].drop_duplicates().astype(str)
         key_old = old[RUN_KEYS].astype(str).agg("|".join, axis=1)
         key_new = set(done.agg("|".join, axis=1))
@@ -476,7 +441,7 @@ def append_history(rows: list[dict], path: Path):
     df = pd.DataFrame(rows)
     if path.exists():
         keys = ["scheme", "subject", "fold", "seed"]
-        old = pd.read_csv(path, dtype={"subject": str})
+        old = _drop_stale(pd.read_csv(path, dtype={"subject": str}), df, path)
         key_old = old[keys].astype(str).agg("|".join, axis=1)
         key_new = set(df[keys].astype(str).agg("|".join, axis=1))
         df = pd.concat([old[~key_old.isin(key_new)], df], ignore_index=True)
@@ -525,7 +490,8 @@ def run_fold(*, scheme, fold, X, y, trial_id, subject, test_mask, seeds, device,
             data_version=DATA_VERSION, folds_hash=folds_hash)))
         for h in history:
             hist.append(dict(scheme=scheme, subject=sub_label or "ALL", fold=fold, seed=seed,
-                             best_epoch=best_epoch, **h))
+                             best_epoch=best_epoch, data_version=DATA_VERSION,
+                             folds_hash=folds_hash, **h))
         print(f"  [{scheme}] {sub_label or 'ALL'} fold {fold} seed {seed}: "
               f"train={len(tr)} val={len(va)} test={len(te)} (target={int(y[te].sum())}) "
               f"best_epoch={best_epoch} — {time.time() - t0:.1f}s", flush=True)

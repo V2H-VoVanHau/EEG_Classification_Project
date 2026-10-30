@@ -100,3 +100,8 @@ FOLDS_HASH = (
     if FOLDS_PATH.is_file()
     else None
 )
+
+# Tham số thống kê
+N_BOOTSTRAP = 10000
+N_PERMUTATIONS = 10000
+PERMUTATION_EXACT_MAX_N = 16

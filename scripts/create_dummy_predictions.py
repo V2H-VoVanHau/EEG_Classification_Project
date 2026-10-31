@@ -1,3 +1,7 @@
+"""Tạo dự đoán ngẫu nhiên để chạy thử máy chấm.
+
+Dùng: python scripts/create_dummy_predictions.py
+"""
 import json
 from pathlib import Path
 
@@ -7,22 +11,15 @@ import pandas as pd
 
 from eegoddball.config import (
     DATA_VERSION,
-    DERIVATIVES_DIR,
+    EPOCHS_DIR,
     FOLDS_PATH,
     RESULTS_DIR,
-    SAMPLE_SUBJECTS,
     SEED,
     get_folds_hash,
 )
 
 
 def main():
-    # Script này lấy nhãn từ v0, vì vậy không gắn phiên bản v1
-    if DATA_VERSION != "v0":
-        raise ValueError(
-            "Script thử này dùng v0; DATA_VERSION phải là 'v0'."
-        )
-
     folds = json.loads(
         Path(FOLDS_PATH).read_text(encoding="utf-8")
     )
@@ -31,12 +28,8 @@ def main():
     # Lập danh sách mẫu test từ folds và metadata thực tế
     test_rows = []
 
-    for sub in SAMPLE_SUBJECTS:
-        path = (
-            Path(DERIVATIVES_DIR)
-            / "v0"
-            / f"sub-{sub}_task-oddball-epo.fif"
-        )
+    for sub in folds["metadata"]["subjects"]:
+        path = Path(EPOCHS_DIR) / f"sub-{sub}_task-oddball-epo.fif"
 
         epochs = mne.read_epochs(
             path, preload=False, verbose=False

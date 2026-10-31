@@ -25,7 +25,7 @@ for path in [
 
 # 2. Phiên bản dữ liệu
 
-DATA_VERSION = "v0"
+DATA_VERSION = "v1"
 
 # Đường dẫn epochs đang sử dụng
 EPOCHS_DIR = os.path.join(DERIVATIVES_DIR, DATA_VERSION)
@@ -61,6 +61,15 @@ STIMULUS_CODES = {
 
 # Số kích thích gốc của mỗi đối tượng
 EXPECTED_TRIALS = 660
+
+# Đã đối chiếu events.tsv: sub-23, 38 dừng giữa khối rồi chạy lại khối cuối;
+# sub-24, 37 mất một marker standard
+EXPECTED_TRIALS_BY_SUBJECT = {"23": 692, "24": 659, "37": 659, "38": 775}
+
+
+def get_expected_trials(sub):
+    return EXPECTED_TRIALS_BY_SUBJECT.get(sub, EXPECTED_TRIALS)
+
 
 # 6. Chia tập và seed
 

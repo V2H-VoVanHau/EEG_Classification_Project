@@ -5,6 +5,7 @@ derivatives/
 *.fif
 *.pt
 *.npy
+results/dummy/
 
 # Python
 __pycache__/
@@ -17,3 +18,6 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+#Hướng dẫn riêng
+CLAUDE.local.md

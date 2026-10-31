@@ -75,6 +75,12 @@ class TestReference(unittest.TestCase):
     def setUpClass(cls):
         dummy_dir = Path(RESULTS_DIR) / "dummy"
 
+        # results/dummy không được commit nên bản clone mới chưa có
+        if not (dummy_dir / "predictions_tv3.csv").is_file():
+            raise unittest.SkipTest(
+                "Chạy python scripts/create_dummy_predictions.py trước."
+            )
+
         frames = [
             load_predictions(
                 dummy_dir / "predictions_tv3.csv"

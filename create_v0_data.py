@@ -12,6 +12,7 @@ from eegoddball.config import (
     EVENT_ID,
     STIMULUS_CODES,
     EXPECTED_TRIALS,
+    get_expected_trials,
     SFREQ_NEW,
     L_FREQ,
     H_FREQ,
@@ -20,7 +21,7 @@ from eegoddball.config import (
 )
 
 
-def read_stimulus_metadata(events_path):
+def read_stimulus_metadata(events_path, expected_trials=EXPECTED_TRIALS):
     """Đọc kích thích và gắn trial_id trước khi cắt epoch."""
     events_df = pd.read_csv(events_path, sep="\t")
 
@@ -59,14 +60,14 @@ def read_stimulus_metadata(events_path):
     # Giữ nguyên thứ tự kích thích trong events.tsv
     metadata = metadata.reset_index(drop=True)
 
-    if len(metadata) != EXPECTED_TRIALS:
+    if len(metadata) != expected_trials:
         raise ValueError(
             f"{events_path}: tìm thấy {len(metadata)} kích thích, "
-            f"yêu cầu {EXPECTED_TRIALS}. "
+            f"yêu cầu {expected_trials}. "
             "Hãy kiểm tra event_type trước khi tiếp tục."
         )
 
-    # Mã cố định của kích thích gốc: 0..659
+    # Mã cố định của kích thích gốc: 0..n-1
     # Không đánh số lại mã này sau khi loại epoch ở v1
     metadata["trial_id"] = np.arange(
         len(metadata),
@@ -114,8 +115,10 @@ def create_v0_data():
             root=DATA_DIR,
         )
 
+        # sub-13, 41, 42: .vhdr khác thứ tự channels.tsv
         raw = read_raw_bids(
             bids_path=bids_path,
+            on_ch_mismatch="reorder",
             verbose=False,
         )
         raw.load_data()
@@ -137,7 +140,8 @@ def create_v0_data():
                 "session/run tương ứng trong BIDSPath."
             )
 
-        metadata = read_stimulus_metadata(events_path)
+        expected_trials = get_expected_trials(sub)
+        metadata = read_stimulus_metadata(events_path, expected_trials)
 
         # Lọc và hạ mẫu trước khi chuyển onset sang chỉ số mẫu
         raw.filter(
@@ -194,7 +198,7 @@ def create_v0_data():
         )
 
         # Không âm thầm lưu v0 thiếu kích thích
-        if len(epochs) != EXPECTED_TRIALS:
+        if len(epochs) != expected_trials:
             dropped = [
                 (int(trial_id), reasons)
                 for trial_id, reasons in zip(
@@ -206,7 +210,7 @@ def create_v0_data():
 
             raise ValueError(
                 f"sub-{sub}: chỉ còn {len(epochs)}/"
-                f"{EXPECTED_TRIALS} epoch. "
+                f"{expected_trials} epoch. "
                 f"Các trial bị loại: {dropped}"
             )
 

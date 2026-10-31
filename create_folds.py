@@ -3,18 +3,19 @@ import hashlib
 import json
 from pathlib import Path
 
-import mne
 import numpy as np
+from mne_bids import BIDSPath
 from sklearn.model_selection import KFold, StratifiedKFold
 
+from create_v0_data import read_stimulus_metadata
 from eegoddball.config import (
-    DERIVATIVES_DIR,
-    SAMPLE_SUBJECTS,
+    DATA_DIR,
+    SUBJECTS,
     EVENT_ID,
-    EXPECTED_TRIALS,
     N_SPLITS,
     SEED,
     FOLDS_PATH,
+    get_expected_trials,
 )
 
 
@@ -27,7 +28,7 @@ def create_folds(overwrite=False):
             "Nếu cần thay bản folds cũ sai, chạy với --overwrite."
         )
 
-    subjects = list(SAMPLE_SUBJECTS)
+    subjects = list(SUBJECTS)
 
     if len(subjects) < 2 or len(set(subjects)) != len(subjects):
         raise ValueError("Cần ít nhất hai đối tượng khác nhau.")
@@ -45,64 +46,23 @@ def create_folds(overwrite=False):
     }
 
     for sub in subjects:
-        fif_path = (
-            Path(DERIVATIVES_DIR)
-            / "v0"
-            / f"sub-{sub}_task-oddball-epo.fif"
+        events_path = (
+            BIDSPath(
+                subject=sub,
+                task="oddball",
+                datatype="eeg",
+                root=DATA_DIR,
+            )
+            .update(suffix="events", extension=".tsv")
+            .fpath
         )
 
-        if not fif_path.is_file():
-            raise FileNotFoundError(f"Chưa có {fif_path}")
-
-        epochs = mne.read_epochs(
-            fif_path,
-            preload=False,
-            verbose=False,
+        # Lấy trial_id trực tiếp từ events.tsv, cùng hàm đánh số với v0 và v1:
+        # chia trên toàn bộ kích thích gốc, không phụ thuộc epoch nào bị loại
+        metadata = read_stimulus_metadata(
+            events_path,
+            get_expected_trials(sub),
         )
-
-        if epochs.event_id != EVENT_ID:
-            raise ValueError(
-                f"sub-{sub}: nhãn không đúng. Hãy tạo lại v0."
-            )
-
-        metadata = epochs.metadata
-
-        required = {"trial_id", "condition", "event_code"}
-
-        if metadata is None or not required.issubset(metadata.columns):
-            raise ValueError(
-                f"sub-{sub}: thiếu metadata. Hãy tạo lại v0."
-            )
-
-        # v0 phải chứa đủ kích thích gốc, đúng thứ tự
-        if (
-            len(epochs) != EXPECTED_TRIALS
-            or not np.array_equal(
-                metadata["trial_id"].to_numpy(),
-                np.arange(EXPECTED_TRIALS),
-            )
-        ):
-            raise ValueError(
-                f"sub-{sub}: v0 phải có đủ trial_id "
-                f"0..{EXPECTED_TRIALS - 1}, không trùng và đúng thứ tự."
-            )
-
-        expected_codes = metadata["condition"].map(EVENT_ID)
-
-        if (
-            expected_codes.isna().any()
-            or not np.array_equal(
-                expected_codes.to_numpy(),
-                metadata["event_code"].to_numpy(),
-            )
-            or not np.array_equal(
-                metadata["event_code"].to_numpy(),
-                epochs.events[:, 2],
-            )
-        ):
-            raise ValueError(
-                f"sub-{sub}: nhãn trong metadata và events không khớp."
-            )
 
         # Bài toán nhị phân: chỉ chia standard và target.
         # Distractor vẫn giữ trong FIF để phân tích khác.
@@ -160,7 +120,6 @@ def create_folds(overwrite=False):
 
         folds_data["within_subject"][sub] = sub_folds
 
-    # Pilot có 3 người: cross-subject gồm 3 fold.
     subjects_array = np.asarray(subjects)
 
     cross_splitter = KFold(
@@ -180,9 +139,11 @@ def create_folds(overwrite=False):
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     temporary_path = output_path.with_suffix(".json.tmp")
+    # Luôn ghi LF: folds_hash băm từng byte nên phải giống nhau trên mọi máy
     temporary_path.write_text(
         json.dumps(folds_data, indent=2) + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     temporary_path.replace(output_path)
 

@@ -6,10 +6,8 @@ import os
 
 def load_data(sub_id, fold_name, flatten = True):
     # 1. Đường dẫn file
-    # json_path = r"d:\Đại Học\Kỳ 1 năm Ba\Tính toán khoa học thần kinh và ứng dụng\EEG_Classification_Project\splits\fold.json"
-    # fif_path = r"d:\Đại Học\Kỳ 1 năm Ba\Tính toán khoa học thần kinh và ứng dụng\EEG_Classification_Project\derivatives\v0\sub-03_task-oddball-epo.fif"
 
-    json_path = os.path.join(SPLIT_DIR, 'fold.json')
+    json_path = os.path.join(SPLIT_DIR, 'folds.json')
     v0_dir = os.path.join(DERIVATIVES_DIR, 'v0')
     fif_path = os.path.join(v0_dir, f"sub-03_task-oddball-epo.fif")
 
@@ -43,4 +41,4 @@ def load_data(sub_id, fold_name, flatten = True):
         X_train = X_train.reshape(X_train.shape[0], -1)
         X_test = X_test.reshape(X_test.shape[0], -1)
 
-    return X_train, y_train, X_test, y_test
+    return X_train, y_train, X_test, y_test, test_indices

@@ -147,7 +147,7 @@ def extract_xdawn_features(X_train, y_train, X_test, sfreq=250, n_components=2):
     X_tr_filt = xdawn.transform(epochs_tr)  # Shape: (n_trials_tr, n_components_total, n_times)
     X_te_filt = xdawn.transform(epochs_te)  # Shape: (n_trials_te, n_components_total, n_times)
     
-    # 6. Phẳng hóa thành Ma trận 特徵 2D (n_trials, n_features)
+    # 6. Phẳng hóa thành Ma trận 2D (n_trials, n_features)
     X_tr_feats = X_tr_filt.reshape(n_trials_tr, -1)
     X_te_feats = X_te_filt.reshape(n_trials_te, -1)
     

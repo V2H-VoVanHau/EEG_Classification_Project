@@ -1,7 +1,8 @@
 from extract_features import *
 from process_data import load_data
-
-X_train, y_train, X_test, y_test = load_data('03', 'fold_3', flatten=False)
+from sklearn.metrics import balanced_accuracy_score
+from train_lda_pipeline import train_lda_pipeline, train_lda_pipeline_with_feat
+# X_train, y_train, X_test, y_test, test_indices = load_data('03', 'fold_3', flatten=False)
 
 # sfreq = 250  # Tần số lấy mẫu 250Hz
 
@@ -179,12 +180,35 @@ def visualize_train_data(X_train, y_train, sfreq=250, tmin=-0.2, save_dir="plots
 
 # --- Ví dụ cách chạy trực tiếp ---
 if __name__ == "__main__":
-    # Giả lập dữ liệu X_train (601 trials, 127 channels, 251 timepoints)
-    np.random.seed(42)
-    mock_X_train = X_train  # Đơn vị Volt
-    mock_y_train = y_train  # 0: Standard, 1: Oddball
+# 1. Cấu hình thông số test
+    SUB_ID = "03"
+    FOLD_NAME = "fold_3"
+    OUTPUT_FILE = "sub03_fold3_lda_baseline_with_features.csv"
 
-    # Gọi hàm vẽ
-    visualize_train_data(mock_X_train, mock_y_train, sfreq=250, tmin=-0.2)
+    print(f"=== BẮT ĐẦU TEST HYPERPIPE LDA ON SUB-{SUB_ID} [{FOLD_NAME}] ===")
+    
+    try:
+        # 2. Gọi hàm huấn luyện
+        df_results = train_lda_pipeline_with_feat(
+            sub_id=SUB_ID, 
+            fold_name=FOLD_NAME, 
+            file_name=OUTPUT_FILE
+        )
+        
+        # 3. Kiểm tra và hiển thị kết quả xuất ra
+        print("\n=== KIỂM TRA FILE KẾT QUẢ DỰ ĐOÁN TẬP TEST ===")
+        print(f"Tổng số mẫu dự đoán: {len(df_results)}")
+        print("\n5 dòng đầu tiên của file kết quả:")
+        print(df_results.head())
+        
+        print("\nPhân bố nhãn thực tế vs nhãn dự đoán trên tập Test:")
+        print("True labels:\n", df_results['true_label'].value_counts())
+        print("Predictions:\n", df_results['prediction'].value_counts())
 
-    # print(mock_y_train[:10])
+        # Tính Balanced Accuracy nhanh trên tập Test
+
+        test_bacc = balanced_accuracy_score(df_results['true_label'], df_results['prediction'])
+        print(f"\n[Test Hold-out] Balanced Accuracy: {test_bacc:.4f}")
+
+    except Exception as e:
+        print(f"\n[X] Lỗi trong quá trình chạy test: {e}")

@@ -99,6 +99,8 @@ MODEL_NAME = "EEGNet"
 PRED_COLS = ["scheme", "subject", "fold", "model", "seed", "trial_id",
              "y_true", "y_score", "data_version", "folds_hash"]
 RUN_KEYS = ["scheme", "model", "seed", "subject", "fold"]
+# Tên kịch bản trong file dự đoán theo máy chấm của TV1 (evaluate.py); tên file mô hình giữ dạng ngắn
+SCHEME_NAMES = {"within": "within_subject", "cross": "cross_subject"}
 
 
 # ----------------------------------------------------------------------------------------------
@@ -221,11 +223,17 @@ def _section(folds, scheme):
     raise KeyError(f"folds.json không có mục '{scheme}' (thấy {list(folds)})")
 
 
+def _fold_names(entries) -> list[str]:
+    """Tên fold theo thứ tự k = 0, 1, ...: đúng khóa trong folds.json ("fold_0"), máy chấm so theo tên."""
+    if isinstance(entries, dict):
+        return sorted(entries, key=lambda s: int(str(s).rsplit("_", 1)[-1]))
+    return [f"fold_{k}" for k in range(len(entries))]
+
+
 def _fold_list(entries) -> list:
     """Danh sách fold theo thứ tự k = 0, 1, ...; nhận list hoặc dict {"fold_0": ...}."""
     if isinstance(entries, dict):
-        keys = sorted(entries, key=lambda s: int(str(s).rsplit("_", 1)[-1]))
-        return [entries[k] for k in keys]
+        return [entries[k] for k in _fold_names(entries)]
     return list(entries)
 
 
@@ -238,12 +246,24 @@ def _test_list(entry):
     return entry
 
 
-def _within_entry(folds, sub) -> list:
+def _within_raw(folds, sub):
     w = _section(folds, "within")
     for key in (sub, f"sub-{sub}", str(int(sub)) if sub.isdigit() else None):
         if key is not None and key in w:
-            return _fold_list(w[key])
+            return w[key]
     raise KeyError(f"folds.json không có within cho sub-{sub} (có: {list(w)})")
+
+
+def _within_entry(folds, sub) -> list:
+    return _fold_list(_within_raw(folds, sub))
+
+
+def within_fold_names(folds, sub) -> list[str]:
+    return _fold_names(_within_raw(folds, sub))
+
+
+def cross_fold_names(folds) -> list[str]:
+    return _fold_names(_section(folds, "cross"))
 
 
 def within_subjects(folds) -> list[str]:
@@ -280,13 +300,22 @@ def split_validation(rest_idx, y, groups=None):
 # 4. Chuẩn hóa — thống kê CHỈ từ tập train của fold
 # ----------------------------------------------------------------------------------------------
 def fit_norm(X):
-    mean = X.mean(axis=(0, 2)).astype(np.float32)
-    std = (X.std(axis=(0, 2)) + 1e-6).astype(np.float32)
+    # Từng kênh một: X.std(axis=(0, 2)) tạo mảng tạm cỡ X (≈1 GB khi gộp 42 người ở cross-subject)
+    mean = np.array([X[:, c].mean(dtype=np.float64) for c in range(X.shape[1])], dtype=np.float32)
+    std = np.array([X[:, c].std(dtype=np.float64) for c in range(X.shape[1])], dtype=np.float32) + 1e-6
     return dict(mean=mean, std=std)
 
 
 def apply_norm(X, nrm):
     return (X - nrm["mean"][None, :, None]) / nrm["std"][None, :, None]
+
+
+def _take_normed(X, idx, nrm):
+    """Như apply_norm(X[idx], nrm) nhưng chuẩn hóa tại chỗ trên bản sao X[idx] (tiết kiệm RAM)."""
+    out = X[idx]
+    out -= nrm["mean"][None, :, None]
+    out /= nrm["std"][None, :, None]
+    return out
 
 
 # ----------------------------------------------------------------------------------------------
@@ -417,6 +446,23 @@ def _drop_stale(old: pd.DataFrame, new: pd.DataFrame, path: Path) -> pd.DataFram
     return old[same]
 
 
+def _atomic_write_csv(df: pd.DataFrame, path: Path, tries: int = 30):
+    """Ghi qua file .tmp rồi thay thế. Trên Windows/OneDrive file đích có thể bị khóa tạm thời
+    (đang mở trong editor, đang đồng bộ) → thử lại; nếu vẫn hỏng thì GIỮ file .tmp và báo lỗi rõ."""
+    tmp = path.with_suffix(".tmp")
+    df.to_csv(tmp, index=False)
+    for i in range(tries):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            if i == 0:
+                print(f"  {path.name} đang bị khóa (mở trong editor/OneDrive?) — thử lại...", flush=True)
+            time.sleep(2)
+    raise PermissionError(f"Không ghi được {path} sau {tries} lần. Kết quả đầy đủ vẫn ở {tmp}: "
+                          f"đóng file đích rồi đổi tên {tmp.name} → {path.name}.")
+
+
 def write_predictions(new: pd.DataFrame, path: Path):
     """Ghi file dự đoán; chạy lại cùng (scheme, model, seed, subject, fold) thì thay dòng cũ."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -428,9 +474,7 @@ def write_predictions(new: pd.DataFrame, path: Path):
         key_new = set(done.agg("|".join, axis=1))
         new = pd.concat([old[~key_old.isin(key_new)], new], ignore_index=True)
     new = new.sort_values(["scheme", "model", "seed", "subject", "fold", "trial_id"])
-    tmp = path.with_suffix(".tmp")
-    new.to_csv(tmp, index=False)
-    tmp.replace(path)
+    _atomic_write_csv(new, path)
 
 
 def append_history(rows: list[dict], path: Path):
@@ -445,15 +489,13 @@ def append_history(rows: list[dict], path: Path):
         key_old = old[keys].astype(str).agg("|".join, axis=1)
         key_new = set(df[keys].astype(str).agg("|".join, axis=1))
         df = pd.concat([old[~key_old.isin(key_new)], df], ignore_index=True)
-    tmp = path.with_suffix(".tmp")
-    df.to_csv(tmp, index=False)
-    tmp.replace(path)
+    _atomic_write_csv(df, path)
 
 
 # ----------------------------------------------------------------------------------------------
 # 7. Một fold = 5 bước (13.1.3)
 # ----------------------------------------------------------------------------------------------
-def run_fold(*, scheme, fold, X, y, trial_id, subject, test_mask, seeds, device, args,
+def run_fold(*, scheme, fold, fold_name, X, y, trial_id, subject, test_mask, seeds, device, args,
              folds_hash, ch_names, sub_label=None, val_groups=None):
     """Bước 1 (đọc luật) đã làm ở hàm gọi → test_mask.
     Bước 2: cất tập test. Bước 3: tách validation. Bước 4: huấn luyện. Bước 5: dự đoán đúng 1 lần."""
@@ -462,8 +504,11 @@ def run_fold(*, scheme, fold, X, y, trial_id, subject, test_mask, seeds, device,
     tr, va = split_validation(rest, y, val_groups)       # 3. validation chỉ từ phần còn lại
     assert not (set(tr) & set(te)) and not (set(va) & set(te)) and not (set(tr) & set(va))
 
-    nrm = fit_norm(X[tr])                                # thống kê chuẩn hóa chỉ từ train
-    Xtr, Xva, Xte = apply_norm(X[tr], nrm), apply_norm(X[va], nrm), apply_norm(X[te], nrm)
+    Xtr = X[tr]
+    nrm = fit_norm(Xtr)                                  # thống kê chuẩn hóa chỉ từ train
+    Xtr -= nrm["mean"][None, :, None]
+    Xtr /= nrm["std"][None, :, None]
+    Xva, Xte = _take_normed(X, va, nrm), _take_normed(X, te, nrm)
 
     preds, hist = [], []
     for seed in seeds:
@@ -475,7 +520,8 @@ def run_fold(*, scheme, fold, X, y, trial_id, subject, test_mask, seeds, device,
             model, best_epoch, history = train_eegnet(Xtr, y[tr], Xva, y[va], seed, device)  # 4.
             p = predict_proba(model, Xte, device)                                            # 5.
             stem = model_stem(scheme, seed, fold, sub_label)
-            meta = dict(scheme=scheme, model=MODEL_NAME, seed=seed, fold=fold, subject=sub_label,
+            meta = dict(scheme=scheme, model=MODEL_NAME, seed=seed, fold=fold, fold_name=fold_name,
+                        subject=sub_label,
                         n_ch=int(X.shape[1]), n_times=int(X.shape[2]), sfreq=SFREQ_DL,
                         tmin=TMIN, tmax=TMAX, baseline=list(BASELINE), unit="uV",
                         ch_names=list(ch_names), arch=ARCH, train=TRAIN, best_epoch=best_epoch,
@@ -485,14 +531,16 @@ def run_fold(*, scheme, fold, X, y, trial_id, subject, test_mask, seeds, device,
             save_bundle(stem, model, subject[te], trial_id[te], nrm, meta)
 
         preds.append(pd.DataFrame(dict(
-            scheme=scheme, subject=subject[te], fold=fold, model=MODEL_NAME if not args.dry_run
+            scheme=SCHEME_NAMES[scheme], subject=subject[te], fold=fold_name,
+            model=MODEL_NAME if not args.dry_run
             else "DRYRUN-LogReg", seed=seed, trial_id=trial_id[te], y_true=y[te], y_score=p,
             data_version=DATA_VERSION, folds_hash=folds_hash)))
         for h in history:
-            hist.append(dict(scheme=scheme, subject=sub_label or "ALL", fold=fold, seed=seed,
+            hist.append(dict(scheme=SCHEME_NAMES[scheme], subject=sub_label or "ALL", fold=fold_name,
+                             seed=seed,
                              best_epoch=best_epoch, data_version=DATA_VERSION,
                              folds_hash=folds_hash, **h))
-        print(f"  [{scheme}] {sub_label or 'ALL'} fold {fold} seed {seed}: "
+        print(f"  [{scheme}] {sub_label or 'ALL'} {fold_name} seed {seed}: "
               f"train={len(tr)} val={len(va)} test={len(te)} (target={int(y[te].sum())}) "
               f"best_epoch={best_epoch} — {time.time() - t0:.1f}s", flush=True)
     return pd.concat(preds, ignore_index=True), hist
@@ -512,10 +560,13 @@ def run_within(subjects, folds, folds_hash, seeds, device, args):
                        for k in range(n_folds))
         print(f"sub-{sub}: {len(d['y'])} epoch (target={int(d['y'].sum())}); {n_absent} trial_id "
               f"trong folds.json không có ở đây (distractor hoặc epoch TV2 đã loại) — bình thường.")
+        names = within_fold_names(folds, sub)
         for k in range(n_folds):
+            if getattr(args, "folds", None) is not None and k not in args.folds:
+                continue
             test_ids = within_test_ids(folds, sub, k)                 # 1. đọc luật của TV1
             test_mask = np.isin(d["trial_id"], test_ids)
-            p, h = run_fold(scheme="within", fold=k, X=d["X"], y=d["y"], trial_id=d["trial_id"],
+            p, h = run_fold(scheme="within", fold=k, fold_name=names[k], X=d["X"], y=d["y"], trial_id=d["trial_id"],
                             subject=np.full(len(d["y"]), sub), test_mask=test_mask, seeds=seeds,
                             device=device, args=args, folds_hash=folds_hash,
                             ch_names=d["ch_names"], sub_label=sub)
@@ -542,14 +593,17 @@ def run_cross(subjects, folds, folds_hash, seeds, device, args):
     del data
 
     preds, hist = [], []
+    names = cross_fold_names(folds)
     for k in range(n_cross_folds(folds)):
+        if getattr(args, "folds", None) is not None and k not in args.folds:
+            continue                                                 # --folds: chạy tiếp phần còn thiếu
         test_subs = cross_test_subjects(folds, k)                    # 1. đọc luật của TV1
         test_mask = np.isin(subj, test_subs)
         if not test_mask.any() or test_mask.all():
-            print(f"  [cross] fold {k}: không có người test (hoặc không còn người train) "
+            print(f"  [cross] {names[k]}: không có người test (hoặc không còn người train) "
                   f"trong dữ liệu hiện có — bỏ qua.")
             continue
-        p, h = run_fold(scheme="cross", fold=k, X=X, y=y, trial_id=tid, subject=subj,
+        p, h = run_fold(scheme="cross", fold=k, fold_name=names[k], X=X, y=y, trial_id=tid, subject=subj,
                         test_mask=test_mask, seeds=seeds, device=device, args=args,
                         folds_hash=folds_hash, ch_names=ref,
                         val_groups=subj if args.val_by_subject else None)
@@ -580,6 +634,8 @@ def main(argv=None):
     ap.add_argument("--max-epochs", type=int, help="ghi đè TRAIN['max_epochs'] (thử nhanh)")
     ap.add_argument("--val-by-subject", action="store_true",
                     help="cross-subject: tách validation theo người thay vì theo epoch")
+    ap.add_argument("--folds", nargs="*", type=int,
+                    help="chỉ chạy các fold này (vd: --folds 4); kết quả fold khác trong CSV được giữ nguyên")
     ap.add_argument("--dry-run", action="store_true",
                     help="không cần torch: thay EEGNet bằng LogReg để kiểm tra fold/định dạng")
     args = ap.parse_args(argv)

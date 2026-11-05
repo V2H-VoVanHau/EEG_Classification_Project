@@ -118,11 +118,11 @@ def test_within_end_to_end_no_leakage_and_bundle(dl):
     assert sorted(pred.trial_id) == sorted(np.flatnonzero(kind != "distractor"))
     for k in range(5):
         expected = set(dl.within_test_ids(folds, "01", k)) & set(np.flatnonzero(kind != "distractor"))
-        assert set(pred[pred.fold == k].trial_id) == expected
+        assert set(pred[pred.fold == f"fold_{k}"].trial_id) == expected
     assert pred.y_score.between(0, 1).all()
 
     model, nrm, test, meta = dl.load_model("within_EEGNet_sub-01_seed0_fold0")
-    assert set(test["trial_id"]) == set(pred[pred.fold == 0].trial_id)
+    assert set(test["trial_id"]) == set(pred[pred.fold == "fold_0"].trial_id)
     assert meta["n_times"] == 103 and nrm["mean"].shape == (8,)
 
     hist = pd.read_csv(dl.RESULTS_DIR / "history_tv4.csv")
@@ -138,7 +138,9 @@ def test_cross_subject_holds_out_whole_people(dl):
     dl.run_cross(["01", "02", "03"], tv1_folds(["01", "02", "03"]), "hash0", [0],
                  torch.device("cpu"), args)
     pred = pd.read_csv(dl.RESULTS_DIR / "predictions_tv4.csv", dtype={"subject": str})
-    assert pred.groupby("fold").subject.unique().map(list).to_dict() == {0: ["01"], 1: ["02"], 2: ["03"]}
+    assert pred.groupby("fold").subject.unique().map(list).to_dict() == {
+        "fold_0": ["01"], "fold_1": ["02"], "fold_2": ["03"]}
+    assert set(pred.scheme) == {"cross_subject"}
     meta = json.loads((dl.MODELS_DIR / "cross_EEGNet_seed0_fold1_meta.json").read_text("utf-8"))
     assert meta["val_by_subject"] is True and meta["subject"] is None
 
@@ -150,3 +152,26 @@ def test_validation_split_never_touches_test(dl):
     assert not set(tr) & set(va)
     assert set(tr) | set(va) == set(rest)
     assert abs(len(va) - 0.2 * len(rest)) <= 1
+
+
+def test_predictions_pass_tv1_validator(dl):
+    """File dự đoán phải qua validate_predictions của máy chấm TV1 (scheme, fold, kiểu dữ liệu)."""
+    import sys
+    sys.path.insert(0, str(SRC.parent))
+    from eegoddball.evaluate import load_predictions
+    make_epochs(dl.EPOCHS_DIR, "01")
+    args = SimpleNamespace(dry_run=False, val_by_subject=False)
+    dl.run_within(["01"], tv1_folds(["01"]), "hash0", [42, 43], torch.device("cpu"), args)
+    pred = load_predictions(dl.RESULTS_DIR / "predictions_tv4.csv")
+    assert set(pred.scheme) == {"within_subject"}
+    assert set(pred.fold) == {f"fold_{k}" for k in range(5)}
+
+
+def test_memory_saving_norm_matches_reference(dl):
+    X = np.random.default_rng(0).normal(5, 3, (40, 6, 20)).astype(np.float32)
+    nrm = dl.fit_norm(X)
+    np.testing.assert_allclose(nrm["mean"], X.mean(axis=(0, 2)), rtol=1e-5)
+    np.testing.assert_allclose(nrm["std"], X.std(axis=(0, 2)) + 1e-6, rtol=1e-5)
+    idx = np.array([3, 1, 7])
+    np.testing.assert_allclose(dl._take_normed(X, idx, nrm), dl.apply_norm(X[idx], nrm), rtol=1e-6)
+    assert X[0, 0, 0] == np.float32(np.random.default_rng(0).normal(5, 3, (40, 6, 20))[0, 0, 0])  # X không bị sửa

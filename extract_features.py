@@ -106,52 +106,43 @@ def extract_wavelet_features(X, wavelet='db4', level=4):
     return np.array(all_feats)
 
 
-def extract_xdawn_features(X_train, y_train, X_test, sfreq=250, n_components=2):
+def fit_xdawn(X_train, y_train, sfreq=250, n_components=2):
     """
-    Áp dụng lọc không gian xDAWN cho dữ liệu dạng NumPy array.
-    
-    X_train: (n_trials, n_channels, n_times)
-    y_train: (n_trials,) - Nhãn của tập train
-    X_test:  (n_trials, n_channels, n_times)
-    sfreq: Tần số lấy mẫu (Hz)
-    n_components: Số lượng thành phần xDAWN
+    Chỉ dùng để khởi tạo và huấn luyện (fit) mô hình xDAWN trên tập Train.
     """
     n_trials_tr, n_channels, _ = X_train.shape
-    n_trials_te = X_test.shape[0]
-    
-    # 1. Tạo cấu trúc Info cho MNE
     info = mne.create_info(ch_names=n_channels, sfreq=sfreq, ch_types='eeg')
     
-    # 2. Tạo mảng sự kiện (Events)
     events_tr = np.column_stack([
         np.arange(n_trials_tr), 
         np.zeros(n_trials_tr, dtype=int), 
         y_train.astype(int)
     ])
     
-    events_te = np.column_stack([
-        np.arange(n_trials_te), 
-        np.zeros(n_trials_te, dtype=int), 
-        np.ones(n_trials_te, dtype=int)
+    epochs_tr = mne.EpochsArray(X_train, info, events=events_tr, verbose=False)
+    
+    xdawn_model = Xdawn(n_components=n_components)
+    xdawn_model.fit(epochs_tr)
+    
+    return xdawn_model
+
+def apply_xdawn(xdawn_model, X, sfreq=250):
+    """
+    Dùng mô hình xDAWN đã fit để transform dữ liệu mới (Train, Val hoặc Test).
+    """
+    n_trials, n_channels, _ = X.shape
+    info = mne.create_info(ch_names=n_channels, sfreq=sfreq, ch_types='eeg')
+    
+    # Với quá trình transform, nhãn (event) không có ý nghĩa nên ta dùng np.ones giả lập
+    events = np.column_stack([
+        np.arange(n_trials), 
+        np.zeros(n_trials, dtype=int), 
+        np.ones(n_trials, dtype=int)
     ])
     
-    # 3. Chuyển NumPy Array thành mne.EpochsArray
-    epochs_tr = mne.EpochsArray(X_train, info, events=events_tr, verbose=False)
-    epochs_te = mne.EpochsArray(X_test, info, events=events_te, verbose=False)
+    epochs = mne.EpochsArray(X, info, events=events, verbose=False)
     
-    # 4. Fit xDAWN trên tập Train
-    xdawn = Xdawn(n_components=n_components)
-    xdawn.fit(epochs_tr)
+    # MNE transform sẽ trả về NumPy array 3D: (n_trials, n_components_total, n_times)
+    X_filt = xdawn_model.transform(epochs) 
     
-    # 5. Transform dữ liệu (Trả về NumPy ndarray)
-    X_tr_filt = xdawn.transform(epochs_tr)  # Shape: (n_trials_tr, n_components_total, n_times)
-    X_te_filt = xdawn.transform(epochs_te)  # Shape: (n_trials_te, n_components_total, n_times)
-    
-    # 6. Phẳng hóa thành Ma trận 2D (n_trials, n_features)
-    X_tr_feats = X_tr_filt.reshape(n_trials_tr, -1)
-    X_te_feats = X_te_filt.reshape(n_trials_te, -1)
-    
-    return X_tr_feats, X_te_feats
-
-from process_data import load_data
-
+    return X_filt

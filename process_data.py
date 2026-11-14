@@ -16,7 +16,7 @@ def load_data(sub_id, fold_name, flatten = True):
     # Bài toán chỉ phân loại target vs standard; distractor vẫn nằm trong file để vẽ ERP
     epochs = mne.read_epochs(fif_path, preload=True)[["standard", "target"]]
     X = epochs.get_data()      # Mảng dữ liệu: (n_trials, n_channels, n_times)
-    y = epochs.events[:, -1]   # Nhãn: standard=1, target=2 (n_trials,)
+    y = (epochs.events[:, -1] == 2).astype(int)
 
     # 4. Chia theo trial_id, KHÔNG theo vị trí: v1 đã loại epoch nên vị trí không còn khớp mã gốc
     trial_ids = epochs.metadata["trial_id"].to_numpy()
@@ -33,5 +33,7 @@ def load_data(sub_id, fold_name, flatten = True):
     if flatten:
         X_train = X_train.reshape(X_train.shape[0], -1)
         X_test = X_test.reshape(X_test.shape[0], -1)
+
+    test_indices = trial_ids[is_test]
 
     return X_train, y_train, X_test, y_test, test_indices

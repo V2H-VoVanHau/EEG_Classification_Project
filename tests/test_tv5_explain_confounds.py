@@ -62,9 +62,14 @@ def test_spatiotemporal_occlusion_on_eegnet():
     df_occ = explain_mod.run_eegnet_occlusion(
         model, X_test, y_test, times=times, ch_names=ch_names, save_outputs=False
     )
-    assert len(df_occ) == 8
+    assert len(df_occ) == 9
     assert {"condition", "baseline_auc", "occluded_auc", "delta_auc"} <= set(df_occ.columns)
     assert np.isfinite(df_occ["delta_auc"]).all()
+
+    b_zero_uv = explain_mod.compute_norm_zero_baseline(np.array([2.0, -4.0]), np.array([2.0, 2.0]), "zero_uv")
+    np.testing.assert_allclose(b_zero_uv, [-1.0, 2.0])
+    b_mean = explain_mod.compute_norm_zero_baseline(np.array([2.0, -4.0]), np.array([2.0, 2.0]), "train_mean")
+    np.testing.assert_allclose(b_mean, [0.0, 0.0])
 
 
 def test_confound_feature_extraction_channel_masks():

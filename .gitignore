@@ -21,3 +21,5 @@ __pycache__/
 
 #Hướng dẫn riêng
 CLAUDE.local.md
+
+results/evaluation/figures/

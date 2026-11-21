@@ -151,88 +151,97 @@ def predict_target_proba(model: nn.Module, X_tensor: torch.Tensor) -> np.ndarray
 def plot_pipeline_diagram():
     """Vẽ Hình 1: Sơ đồ tổng quan 6 bước và 2 nhánh ML vs DL của dự án."""
     figstyle.apply()
-    fig, ax = plt.subplots(figsize=(13, 6.2))
-    ax.set_xlim(0, 13)
-    ax.set_ylim(0, 6.5)
+    fig, ax = plt.subplots(figsize=(15.0, 5.8))
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 40)
     ax.axis("off")
 
     def draw_box(x, y, w, h, title, subtitle, facecolor="#f8f9fa", edgecolor="#333333", title_color="#111111"):
         box = mpatches.FancyBboxPatch(
             (x, y), w, h,
-            boxstyle="round,pad=0.12,rounding_size=0.18",
+            boxstyle="round,pad=0.0,rounding_size=1.2",
             facecolor=facecolor, edgecolor=edgecolor, linewidth=1.6,
         )
         ax.add_patch(box)
-        ax.text(x + w / 2, y + h * 0.66, title, ha="center", va="center", fontsize=10, fontweight="bold", color=title_color)
-        ax.text(x + w / 2, y + h * 0.30, subtitle, ha="center", va="center", fontsize=8.5, color="#333333")
+        ax.text(
+            x + w / 2, y + h * 0.74, title,
+            ha="center", va="center", fontsize=9.2, fontweight="bold", color=title_color,
+        )
+        ax.text(
+            x + w / 2, y + h * 0.34, subtitle,
+            ha="center", va="center", fontsize=8.0, color="#222222", linespacing=1.35,
+        )
 
     def draw_arrow(x1, y1, x2, y2):
         ax.annotate(
             "", xy=(x2, y2), xytext=(x1, y1),
-            arrowprops=dict(arrowstyle="-|>,head_length=0.6,head_width=0.35", lw=1.6, color="#444444"),
+            arrowprops=dict(
+                arrowstyle="-|>,head_length=0.55,head_width=0.32",
+                lw=1.5, color="#444444", shrinkA=0, shrinkB=0,
+            ),
         )
 
-    # Bước 1: Dữ liệu gốc & Chia tập
+    # Cột 1: Bước 1 (Dữ liệu gốc & Chia tập)
     draw_box(
-        0.3, 2.3, 2.1, 1.9,
-        "Step 1: Raw BIDS & Splits",
-        "OpenNeuro ds004621 (N=42)\nStimuli: S5 (Std), S6 (Tgt), S7 (Dist)\nsplits/folds.json (TV1)",
+        1.5, 11.5, 20.0, 15.0,
+        "1. Raw BIDS & Splits (TV1)",
+        "OpenNeuro ds004621 (N = 42)\nS5 (Std), S6 (Tgt), S7 (Dist)\nsplits/folds.json (trial_id & sub)",
         facecolor="#eef4fa", edgecolor="#1f77b4", title_color="#1f77b4",
     )
 
-    # Bước 2: Tiền xử lý & Cắt Epoch
+    # Cột 2: Bước 2 (Tiền xử lý & Cắt Epoch)
     draw_box(
-        2.9, 2.3, 2.2, 1.9,
-        "Step 2: Preprocessing & ERP",
-        "Bandpass 0.1–40 Hz, 250 Hz\nBad channels, ICA, ±150 µV QC\nEpochs [-0.2, 0.8] s (TV2)",
+        26.5, 11.5, 20.5, 15.0,
+        "2. Preprocessing & ERP (TV2)",
+        "0.1–40 Hz, Spline/Bridge, 1 Hz ICA\nAvg Ref, 250 Hz, ±150 µV, Correct\nderivatives/v1 & Figures 2–5",
         facecolor="#eefaf2", edgecolor="#2ca02c", title_color="#1e7e34",
     )
 
-    # Nhánh 3A: Học máy cổ điển (TV3)
+    # Cột 3 - Nhánh trên: Bước 3A (Học máy cổ điển - TV3)
     draw_box(
-        5.7, 3.8, 2.5, 1.8,
-        "Step 3A: Classical ML (TV3)",
-        "Handcrafted Time/Freq Features\nLDA, LogReg, SVM, Random Forest\n→ predictions_tv3.csv",
+        52.5, 21.5, 20.5, 13.5,
+        "3A. Classical ML (TV3)",
+        "Time/Freq/Wavelet/xDAWN Features\nLDA, LogReg, SVM, RF, xDAWN\nFigure 6 & predictions_tv3.csv",
         facecolor="#fff8ec", edgecolor="#ff7f0e", title_color="#b85600",
     )
 
-    # Nhánh 3B: Học sâu (TV4)
+    # Cột 3 - Nhánh dưới: Bước 3B (Học sâu - TV4)
     draw_box(
-        5.7, 0.9, 2.5, 1.8,
-        "Step 3B: Deep Learning (TV4)",
-        "End-to-End Raw Spatiotemporal\nEEGNet Architecture (.pt weights)\n→ predictions_tv4.csv",
+        52.5, 3.0, 20.5, 13.5,
+        "3B. Deep Learning (TV4)",
+        "End-to-End EEGNet (128 Hz, 0–0.8 s)\nClass Weights & Early Stopping\n.pt Bundles & predictions_tv4.csv",
         facecolor="#fdf0f0", edgecolor="#d62728", title_color="#a71d2a",
     )
 
-    # Bước 4: Đánh giá thống kê RQ1 & RQ2 (TV1)
+    # Cột 4 - Nhánh trên: Bước 4 (Đánh giá thống kê RQ1 & RQ2 - TV1)
     draw_box(
-        8.9, 3.8, 3.7, 1.8,
-        "Step 4: Unified Evaluation (TV1)",
-        "RQ1 (Within-subject) & RQ2 (Cross-subject)\nROC-AUC, Balanced Acc, Wilcoxon, Bootstrap\n→ Figures 7–8 & results/summary.csv",
+        78.5, 21.5, 20.5, 13.5,
+        "4. Unified Evaluation (TV1)",
+        "RQ1 (Within) & RQ2 (Cross-subject)\nROC-AUC, Bal. Acc, Wilcoxon, CI95%\nFigures 7–8 & results/summary.csv",
         facecolor="#eef4fa", edgecolor="#1f77b4", title_color="#1f77b4",
     )
 
-    # Bước 5 & 6: Giải thích XAI & Kiểm tra Confound RQ3 (TV5)
+    # Cột 4 - Nhánh dưới: Bước 5–6 (Giải thích XAI & Confound RQ3 - TV5)
     draw_box(
-        8.9, 0.9, 3.7, 1.8,
-        "Step 5–6: Explainability & Confounds (TV5)",
-        "RQ3: Time-resolved AUC, Haufe Pattern,\nIntegrated Gradients, Occlusion & 3 Confounds\n→ Figures 9–10 & predictions_tv5_confounds.csv",
+        78.5, 3.0, 20.5, 13.5,
+        "5–6. Explainability & RQ3 (TV5)",
+        "Sliding AUC, Haufe, IG & Occlusion\nMotor / Visual / Rarity Confounds\nFigures 9–10 & predictions_tv5.csv",
         facecolor="#f5eefb", edgecolor="#9467bd", title_color="#6f42c1",
     )
 
-    # Mũi tên luồng dữ liệu
-    draw_arrow(2.4, 3.25, 2.9, 3.25)
-    draw_arrow(5.1, 3.6, 5.7, 4.7)
-    draw_arrow(5.1, 2.9, 5.7, 1.8)
-    draw_arrow(8.2, 4.7, 8.9, 4.7)
-    draw_arrow(8.2, 1.8, 8.9, 4.3)
-    draw_arrow(8.2, 4.4, 8.9, 2.1)
-    draw_arrow(8.2, 1.8, 8.9, 1.8)
+    # Mũi tên luồng dữ liệu (bắt đầu và kết thúc cách mép hộp 0.4 đơn vị)
+    draw_arrow(21.9, 19.0, 26.1, 19.0)
+    draw_arrow(47.4, 21.5, 52.1, 28.0)
+    draw_arrow(47.4, 16.5, 52.1, 10.0)
+    draw_arrow(73.4, 29.0, 78.1, 29.0)
+    draw_arrow(73.4, 12.5, 78.1, 25.5)
+    draw_arrow(73.4, 25.5, 78.1, 12.5)
+    draw_arrow(73.4, 9.0, 78.1, 9.0)
 
     ax.text(
-        6.5, 6.1,
+        50.0, 38.0,
         "Figure 1: End-to-End Pipeline for Single-Trial EEG Oddball Classification & Neurophysiological Explainability",
-        ha="center", va="center", fontsize=12, fontweight="bold", color="#111111",
+        ha="center", va="center", fontsize=11.5, fontweight="bold", color="#111111",
     )
 
     return figstyle.save(fig, "fig1_pipeline", folder=FIGURES_DIR, save_pdf=True, close=True)
@@ -269,15 +278,23 @@ def load_subject_epochs(subjects, data_version="v0"):
 
 
 def _prepare_valid_topomap_evoked(data: np.ndarray, info: mne.Info, tmin: float, comment: str = "") -> mne.EvokedArray:
-    """Đóng gói mảng (n_channels, n_times) thành mne.EvokedArray có gắn standard_1005 montage hợp lệ."""
+    """Đóng gói mảng (n_channels, n_times) thành mne.EvokedArray, ưu tiên montage sẵn có của v1 (giữ O9/O10)."""
     evoked = mne.EvokedArray(data.copy(), info.copy(), tmin=tmin, comment=comment, verbose=False)
-    montage = mne.channels.make_standard_montage("standard_1005")
-    evoked.set_montage(montage, on_missing="ignore", verbose=False)
-    valid_chs = [
-        ch["ch_name"]
-        for ch in evoked.info["chs"]
-        if ch["loc"][:3] is not None and np.isfinite(ch["loc"][:3]).all() and np.any(ch["loc"][:3] != 0)
-    ]
+
+    def _valid_chs(ev):
+        return [
+            ch["ch_name"]
+            for ch in ev.info["chs"]
+            if ch["loc"][:3] is not None and np.isfinite(ch["loc"][:3]).all() and np.any(ch["loc"][:3] != 0)
+        ]
+
+    valid_chs = _valid_chs(evoked)
+    if len(valid_chs) < max(3, len(evoked.ch_names) // 2):
+        # Fallback cho v0 (v0 chưa gắn sẵn tọa độ điện cực)
+        montage = mne.channels.make_standard_montage("standard_1005")
+        evoked.set_montage(montage, on_missing="ignore", verbose=False)
+        valid_chs = _valid_chs(evoked)
+
     if valid_chs:
         evoked.pick(valid_chs)
     return evoked
@@ -487,7 +504,25 @@ def run_haufe_activation_pattern(epochs_list, loaded_subs, data_version="v0"):
 # ==============================================================================
 # 6. INTEGRATED GRADIENTS & SANITY CHECK (TUẦN 2 & HÌNH 10)
 # ==============================================================================
-def compute_ig_map(model: nn.Module, X_target_tensor: torch.Tensor, max_samples: int = 256) -> np.ndarray:
+def compute_norm_zero_baseline(mean_ch: np.ndarray, std_ch: np.ndarray, baseline_mode: str = "zero_uv") -> np.ndarray:
+    """Tính giá trị baseline 1D (n_ch,) trong không gian đã chuẩn hóa z-score.
+
+    - 'zero_uv': tương ứng 0 µV vật lý = (0 - mean) / std (theo tài liệu bàn giao TV4).
+    - 'train_mean': tương ứng 0.0 trong không gian chuẩn hóa (= trung bình kênh tập train).
+    """
+    mean_1d = np.asarray(mean_ch, dtype=np.float32).reshape(-1)
+    std_1d = np.asarray(std_ch, dtype=np.float32).reshape(-1)
+    if baseline_mode == "zero_uv":
+        return ((0.0 - mean_1d) / np.maximum(std_1d, 1e-6)).astype(np.float32)
+    return np.zeros_like(mean_1d, dtype=np.float32)
+
+
+def compute_ig_map(
+    model: nn.Module,
+    X_target_tensor: torch.Tensor,
+    max_samples: int = 256,
+    baseline_1d: np.ndarray | None = None,
+) -> np.ndarray:
     """Tính bản đồ Integrated Gradients trung bình trên các epoch target theo từng batch (tiết kiệm RAM)."""
     model.eval()
     ig = IntegratedGradients(model)
@@ -497,13 +532,18 @@ def compute_ig_map(model: nn.Module, X_target_tensor: torch.Tensor, max_samples:
         sample_out = model(X_target_tensor[:1])
     target_cls = 1 if (sample_out.dim() == 2 and sample_out.shape[1] >= 2) else None
 
+    if baseline_1d is not None:
+        b_proto = torch.tensor(baseline_1d, dtype=X_target_tensor.dtype, device=X_target_tensor.device).view(1, -1, 1)
+    else:
+        b_proto = None
+
     batch_size = 32
     attr_sum = None
     n_total = 0
     for start in range(0, len(X_target_tensor), batch_size):
         batch = X_target_tensor[start : start + batch_size]
-        baseline = torch.zeros_like(batch)
-        attr = ig.attribute(batch, baselines=baseline, target=target_cls, n_steps=24, internal_batch_size=32)
+        baseline = b_proto.expand_as(batch) if b_proto is not None else torch.zeros_like(batch)
+        attr = ig.attribute(batch, baselines=baseline, target=target_cls, n_steps=32, internal_batch_size=32)
         batch_np = attr.detach().cpu().numpy().sum(axis=0)
         attr_sum = batch_np if attr_sum is None else (attr_sum + batch_np)
         n_total += len(batch)
@@ -562,6 +602,45 @@ def _train_or_load_eegnet_for_explain(
 # ==============================================================================
 # 7. SPATIOTEMPORAL OCCLUSION TRÊN EEGNET (TUẦN 2 - KIỂM TRA NHÂN QUẢ)
 # ==============================================================================
+def save_occlusion_outputs(df_occ: pd.DataFrame, data_version: str = "v0") -> Path:
+    """Lưu CSV và vẽ biểu đồ Occlusion."""
+    os.makedirs(RESULTS_DIR, exist_ok=True)
+    csv_path = Path(RESULTS_DIR) / f"occlusion_eegnet_{data_version}.csv"
+    df_occ.to_csv(csv_path, index=False)
+    print(f"  -> Đã lưu kết quả Occlusion tại: {csv_path}")
+
+    base_auc = float(df_occ["baseline_auc"].iloc[0])
+    figstyle.apply()
+    fig, ax = plt.subplots(figsize=(9.5, 4.6))
+    y_pos = np.arange(len(df_occ))
+    colors = [
+        figstyle.COLORS["target"] if "P3b" in cond or "350" in cond else figstyle.COLORS["distractor"]
+        for cond in df_occ["condition"]
+    ]
+    bars = ax.barh(y_pos, df_occ["delta_auc"], color=colors, alpha=0.88, edgecolor="#222222", height=0.62)
+    ax.axvline(0.0, color="#333333", lw=1.1, ls="-")
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(df_occ["condition"], fontsize=9.5)
+    ax.invert_yaxis()
+    ax.set_xlabel("AUC Drop when Occluded (ΔAUC = Baseline AUC − Occluded AUC)")
+    ax.set_title(
+        f"Spatiotemporal Occlusion Analysis on EEGNet (Baseline Test AUC = {base_auc:.3f})",
+        fontsize=11.5, fontweight="bold",
+    )
+    for bar, val in zip(bars, df_occ["delta_auc"]):
+        ax.text(
+            val + (0.004 if val >= 0 else -0.004),
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:+.3f}",
+            va="center",
+            ha="left" if val >= 0 else "right",
+            fontsize=8.5,
+            fontweight="bold",
+        )
+    figstyle.save(fig, "fig_eegnet_occlusion", folder=FIGURES_DIR, save_pdf=True, close=True)
+    return csv_path
+
+
 def run_eegnet_occlusion(
     model: nn.Module,
     X_test: np.ndarray,
@@ -570,14 +649,13 @@ def run_eegnet_occlusion(
     ch_names: list[str],
     data_version: str = "v0",
     save_outputs: bool = True,
+    fill_1d: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """Che khuất có hệ thống (Spatiotemporal Occlusion) từng cửa sổ thời gian & cụm kênh trên EEGNet.
 
     Đo mức sụt giảm ΔAUC = AUC_baseline - AUC_occluded:
-    - Nếu ΔAUC lớn khi che cửa sổ P3b (300–600 ms) hoặc cụm kênh Đỉnh (Parietal Pz/CPz/P3/P4),
-      chứng tỏ EEGNet thực sự dựa vào tín hiệu P3b sinh lý.
-    - Nếu ΔAUC gần 0 khi che vùng vận động C3 hoặc thị giác sớm 80–200 ms,
-      chứng tỏ EEGNet KHÔNG gian lận qua nhiễu bấm nút hay kích thước chữ.
+    - `fill_1d` cho phép thay thế đúng giá trị `0 µV` trong không gian chuẩn hóa ((0 - mean) / std)
+      hoặc `0.0` (= trung bình kênh tập train) nhất quán với baseline của IG.
     """
     print(f"\n[4/4] Đang chạy Spatiotemporal Occlusion trên EEGNet...")
     X_test_t = torch.tensor(X_test, dtype=torch.float32)
@@ -592,6 +670,7 @@ def run_eegnet_occlusion(
         ("Time: Pre-stimulus (-200–0 ms)", (-0.20, 0.00), None),
         ("Time: Early Visual (80–200 ms)", (0.08, 0.20), None),
         ("Time: P3b Core Window (300–600 ms)", (0.30, 0.60), None),
+        ("Time: Post-350ms Window (350–800 ms)", (0.35, 0.80), None),
         ("Time: Late Window (600–800 ms)", (0.60, 0.80), None),
         ("Space: Parietal P3b Cluster (Pz/CPz/P3/P4)", None, parietal_chs),
         ("Space: Motor Button-Press Cluster (C3/FC3/CP3)", None, motor_c3_chs),
@@ -599,18 +678,28 @@ def run_eegnet_occlusion(
         ("Joint: Parietal P3b (300–600 ms)", (0.30, 0.60), parietal_chs),
     ]
 
+    fill_arr = (
+        np.asarray(fill_1d, dtype=np.float32).reshape(1, -1, 1)
+        if fill_1d is not None
+        else np.zeros((1, len(ch_names), 1), dtype=np.float32)
+    )
+
     rows = []
     for label, t_win, ch_subset in occlusion_specs:
         X_occ = X_test.copy()
         t_mask = np.ones(len(times), dtype=bool)
         if t_win is not None:
             t_mask = (times >= t_win[0]) & (times <= t_win[1])
+            if not t_mask.any():
+                continue
 
         if ch_subset is not None and len(ch_subset) > 0:
             ch_idx = [ch_names.index(c) for c in ch_subset]
-            X_occ[:, np.ix_(ch_idx, np.flatnonzero(t_mask))[0], np.ix_(ch_idx, np.flatnonzero(t_mask))[1]] = 0.0
+            t_idx = np.flatnonzero(t_mask)
+            X_occ[:, np.ix_(ch_idx, t_idx)[0], np.ix_(ch_idx, t_idx)[1]] = fill_arr[:, ch_idx, :]
         elif ch_subset is None:
-            X_occ[:, :, t_mask] = 0.0
+            t_idx = np.flatnonzero(t_mask)
+            X_occ[:, :, t_idx] = fill_arr
 
         occ_probs = predict_target_proba(model, torch.tensor(X_occ, dtype=torch.float32))
         occ_auc = float(roc_auc_score(y_test, occ_probs))
@@ -626,113 +715,197 @@ def run_eegnet_occlusion(
     df_occ = pd.DataFrame(rows)
 
     if save_outputs:
-        os.makedirs(RESULTS_DIR, exist_ok=True)
-        csv_path = Path(RESULTS_DIR) / f"occlusion_eegnet_{data_version}.csv"
-        df_occ.to_csv(csv_path, index=False)
-        print(f"  -> Đã lưu kết quả Occlusion tại: {csv_path}")
-
-        figstyle.apply()
-        fig, ax = plt.subplots(figsize=(9.5, 4.6))
-        y_pos = np.arange(len(df_occ))
-        colors = [
-            figstyle.COLORS["target"] if "P3b" in cond else figstyle.COLORS["distractor"]
-            for cond in df_occ["condition"]
-        ]
-        bars = ax.barh(y_pos, df_occ["delta_auc"], color=colors, alpha=0.88, edgecolor="#222222", height=0.62)
-        ax.axvline(0.0, color="#333333", lw=1.1, ls="-")
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(df_occ["condition"], fontsize=9.5)
-        ax.invert_yaxis()
-        ax.set_xlabel("AUC Drop when Occluded (ΔAUC = Baseline AUC − Occluded AUC)")
-        ax.set_title(
-            f"Spatiotemporal Occlusion Analysis on EEGNet (Baseline Test AUC = {base_auc:.3f})",
-            fontsize=11.5, fontweight="bold",
-        )
-        for bar, val in zip(bars, df_occ["delta_auc"]):
-            ax.text(
-                val + (0.004 if val >= 0 else -0.004),
-                bar.get_y() + bar.get_height() / 2,
-                f"{val:+.3f}",
-                va="center",
-                ha="left" if val >= 0 else "right",
-                fontsize=8.5,
-                fontweight="bold",
-            )
-        figstyle.save(fig, "fig_eegnet_occlusion", folder=FIGURES_DIR, save_pdf=True, close=True)
+        save_occlusion_outputs(df_occ, data_version=data_version)
 
     return df_occ
 
 
-def run_ig_and_sanity_check(epochs_list, loaded_subs, data_version="v0"):
+def _extract_dl_grid(epochs: mne.Epochs, sfreq_dl: float = 128.0, tmin_dl: float = 0.0, tmax_dl: float = 0.8):
+    """Chuẩn bị epoch đúng lưới thời gian học sâu của TV4 (128 Hz, 0.0–0.8 s -> 103 mẫu, µV)."""
+    ep = epochs["standard", "target"].copy()
+    if ep.baseline is None:
+        ep.apply_baseline((-0.2, 0.0), verbose=False)
+    if not np.isclose(ep.info["sfreq"], sfreq_dl):
+        ep.resample(sfreq_dl, verbose=False)
+    ep.crop(tmin_dl, tmax_dl)
+    X_sub = (ep.get_data(picks="eeg") * 1e6).astype(np.float32)
+    y_sub = (ep.events[:, 2] == EVENT_ID["target"]).astype(np.float32)
+    tids = ep.metadata["trial_id"].to_numpy(dtype=np.int64) if ep.metadata is not None and "trial_id" in ep.metadata else np.arange(len(ep))
+    return X_sub, y_sub, tids, ep.times.copy(), ep.info.copy()
+
+
+def _run_on_tv4_bundles_if_available(
+    loaded_subs: list[str],
+    data_version: str,
+    baseline_mode: str = "zero_uv",
+    models_dir: Path | None = None,
+):
+    """Nếu có gói bàn giao TV4 trong derivatives/models/, chạy IG & Occlusion chuẩn trên tập test từng fold."""
+    if models_dir is None:
+        models_dir = Path(DERIVATIVES_DIR) / "models"
+    if not models_dir.exists():
+        return None
+
+    meta_files = sorted(models_dir.glob("*_meta.json"))
+    if not meta_files:
+        return None
+
+    print(f"  -> Phát hiện {len(meta_files)} gói mô hình TV4 trong {models_dir}. Đang kiểm tra tập test không rò rỉ...")
+    # Nhóm theo stem đầu tiên khả dụng (hỗ trợ cả within & cross)
+    ig_trained_maps, ig_random_maps = [], []
+    occ_dfs = []
+    first_meta = None
+    ref_info = None
+    ref_times = None
+    X_raw_all, y_raw_all = [], []
+
+    sub_cache = {}
+    for meta_file in meta_files[:15]:  # giới hạn 15 bundle đại diện (5 fold x 3 seed) để chạy nhanh & đủ đại diện
+        stem = meta_file.name[: -len("_meta.json")]
+        model, nrm, test, meta = load_tv4_bundle(stem, models_dir=models_dir)
+        if test is None or nrm is None:
+            continue
+        if first_meta is None:
+            first_meta = meta
+
+        test_subs = np.unique(test["subject"].astype(str))
+        X_te_list, y_te_list = [], []
+        for s in test_subs:
+            if s not in sub_cache:
+                ep = read_one_subject_epochs(s, data_version=data_version)
+                X_s, y_s, tids_s, times_s, info_s = _extract_dl_grid(
+                    ep, sfreq_dl=meta.get("sfreq", 128.0), tmin_dl=meta.get("tmin", 0.0), tmax_dl=meta.get("tmax", 0.8)
+                )
+                sub_cache[s] = (X_s, y_s, tids_s, times_s, info_s)
+                X_raw_all.append(X_s)
+                y_raw_all.append(y_s)
+                if ref_info is None:
+                    ref_info, ref_times = info_s, times_s
+
+            X_s, y_s, tids_s, _, _ = sub_cache[s]
+            mask_s = test["subject"].astype(str) == s
+            is_test = np.isin(tids_s, test["trial_id"][mask_s])
+            if is_test.any():
+                X_norm_s = ((X_s[is_test] - nrm["mean"][None, :, None]) / nrm["std"][None, :, None]).astype(np.float32)
+                X_te_list.append(X_norm_s)
+                y_te_list.append(y_s[is_test])
+
+        if not X_te_list:
+            continue
+        X_te = np.concatenate(X_te_list, axis=0)
+        y_te = np.concatenate(y_te_list, axis=0)
+        fill_1d = compute_norm_zero_baseline(nrm["mean"], nrm["std"], baseline_mode=baseline_mode)
+
+        X_te_tgt = torch.tensor(X_te[y_te == 1], dtype=torch.float32)
+        ig_trained_maps.append(compute_ig_map(model, X_te_tgt, baseline_1d=fill_1d))
+
+        torch.manual_seed(SEED)
+        untrained = EEGNet(meta["n_ch"], meta["n_times"], n_classes=2, **meta.get("arch", {})).eval()
+        ig_random_maps.append(compute_ig_map(untrained, X_te_tgt, baseline_1d=fill_1d))
+
+        df_occ = run_eegnet_occlusion(
+            model, X_te, y_te, times=ref_times, ch_names=meta["ch_names"],
+            data_version=data_version, save_outputs=False, fill_1d=fill_1d,
+        )
+        occ_dfs.append(df_occ)
+
+    if not ig_trained_maps:
+        return None
+
+    X_raw = np.concatenate(X_raw_all, axis=0)
+    y_raw = np.concatenate(y_raw_all, axis=0)
+    t_stat_map, _ = ttest_ind(X_raw[y_raw == 1], X_raw[y_raw == 0], axis=0, equal_var=False)
+    mean_ig_tr = np.mean(ig_trained_maps, axis=0)
+    mean_ig_rd = np.mean(ig_random_maps, axis=0)
+
+    df_occ_mean = pd.concat(occ_dfs).groupby("condition", sort=False).mean(numeric_only=True).reset_index()
+    return dict(
+        ig_trained=mean_ig_tr,
+        ig_random=mean_ig_rd,
+        t_stat_map=t_stat_map,
+        times=ref_times,
+        info=ref_info,
+        df_occ=df_occ_mean,
+        source=f"TV4 Handover Bundles ({len(ig_trained_maps)} folds/seeds, baseline={baseline_mode})",
+    )
+
+
+def run_ig_and_sanity_check(epochs_list, loaded_subs, data_version="v0", baseline_mode: str = "zero_uv"):
     """Chạy Integrated Gradients, đóng gói mne.EvokedArray Topomap, Sanity Check (Hình 10) & Occlusion."""
-    print(f"\n[3/4] Đang chạy Integrated Gradients (Captum) & Sanity Check (Adebayo et al., 2018)...")
+    print(f"\n[3/4] Đang chạy Integrated Gradients (Captum) & Sanity Check (baseline={baseline_mode})...")
     torch.manual_seed(SEED)
     np.random.seed(SEED)
 
-    # Để vừa khít RAM khi có 42 đối tượng và tăng tốc EEGNet, lấy mẫu tối đa 12 đối tượng đại diện
-    # cho bước huấn luyện EEGNet in-script (nếu chưa có file .pt của TV4), nhưng tính ERP t-map trên toàn bộ
-    max_dl_subs = 12
-    dl_subs = loaded_subs[:max_dl_subs]
-    X_all, y_all = [], []
-    ref_info = None
-    ref_times = None
-    ref_tmin = None
+    tv4_res = _run_on_tv4_bundles_if_available(loaded_subs, data_version=data_version, baseline_mode=baseline_mode)
+    if tv4_res is not None:
+        ig_trained = tv4_res["ig_trained"]
+        ig_random = tv4_res["ig_random"]
+        t_stat_map = tv4_res["t_stat_map"]
+        times = tv4_res["times"]
+        ref_info = tv4_res["info"]
+        ref_tmin = float(times[0])
+        ch_names = ref_info["ch_names"]
+        model_source = tv4_res["source"]
+        df_occ_precomputed = tv4_res["df_occ"]
+    else:
+        df_occ_precomputed = None
+        # Fallback: chuẩn bị đúng lưới 128 Hz, 0.0–0.8 s giống TV4 để khớp kiến trúc & tiết kiệm RAM
+        max_dl_subs = 12
+        dl_subs = loaded_subs[:max_dl_subs]
+        X_all, y_all = [], []
+        ref_info = None
+        ref_times = None
 
-    for sub in dl_subs:
-        epochs = (
-            read_one_subject_epochs(sub, data_version=data_version)
-            if isinstance(epochs_list[0], str)
-            else epochs_list[loaded_subs.index(sub)]
-        )
-        if ref_info is None:
-            ref_info = epochs.info.copy()
-            ref_times = epochs.times.copy()
-            ref_tmin = epochs.tmin
-        bin_ep = epochs["standard", "target"]
-        X_sub = (bin_ep.get_data(copy=True) * 1e6).astype(np.float32)  # µV, float32 tiết kiệm 50% RAM
-        y_sub = (bin_ep.events[:, 2] == EVENT_ID["target"]).astype(np.float32)
-        X_all.append(X_sub)
-        y_all.append(y_sub)
-        del epochs, bin_ep
+        for sub in dl_subs:
+            epochs = (
+                read_one_subject_epochs(sub, data_version=data_version)
+                if isinstance(epochs_list[0], str)
+                else epochs_list[loaded_subs.index(sub)]
+            )
+            X_sub, y_sub, _, times_sub, info_sub = _extract_dl_grid(epochs)
+            if ref_info is None:
+                ref_info = info_sub
+                ref_times = times_sub
+            X_all.append(X_sub)
+            y_all.append(y_sub)
+            del epochs
 
-    X = np.concatenate(X_all, axis=0)
-    y = np.concatenate(y_all, axis=0)
-    del X_all, y_all
+        X = np.concatenate(X_all, axis=0)
+        y = np.concatenate(y_all, axis=0)
+        del X_all, y_all
 
-    # Chuẩn hóa theo từng kênh
-    mean_ch = X.mean(axis=(0, 2), keepdims=True)
-    std_ch = X.std(axis=(0, 2), keepdims=True) + 1e-6
-    X_norm = ((X - mean_ch) / std_ch).astype(np.float32)
+        n_trials, n_channels, n_times = X.shape
+        times = ref_times
+        ref_tmin = float(times[0])
+        ch_names = ref_info["ch_names"]
 
-    n_trials, n_channels, n_times = X_norm.shape
-    times = ref_times
-    ch_names = ref_info["ch_names"]
+        # Tách tập train/test để chuẩn hóa chỉ trên train và tính IG/Occlusion trên tập test (Zero Leakage)
+        rng = np.random.default_rng(SEED)
+        perm = rng.permutation(n_trials)
+        split = int(0.8 * n_trials)
+        train_idx, test_idx = perm[:split], perm[split:]
 
-    # Tách tập train/test để tính IG và Occlusion trên tập test
-    rng = np.random.default_rng(SEED)
-    perm = rng.permutation(n_trials)
-    split = int(0.8 * n_trials)
-    train_idx, test_idx = perm[:split], perm[split:]
+        mean_ch = X[train_idx].mean(axis=(0, 2), keepdims=True)
+        std_ch = X[train_idx].std(axis=(0, 2), keepdims=True) + 1e-6
+        X_norm = ((X - mean_ch) / std_ch).astype(np.float32)
+        fill_1d = compute_norm_zero_baseline(mean_ch, std_ch, baseline_mode=baseline_mode)
 
-    X_test_norm = X_norm[test_idx]
-    y_test = y[test_idx]
-    X_test_t = torch.tensor(X_test_norm, dtype=torch.float32)
-    target_test_mask = y_test == 1
-    X_test_target = X_test_t[target_test_mask]
+        X_test_norm = X_norm[test_idx]
+        y_test = y[test_idx]
+        X_test_t = torch.tensor(X_test_norm, dtype=torch.float32)
+        X_test_target = X_test_t[y_test == 1]
 
-    # 1. Mạng EEGNet TRỌNG SỐ NGẪU NHIÊN (Sanity Check - Untrained)
-    torch.manual_seed(SEED)
-    random_model = EEGNet(n_ch=n_channels, n_times=n_times, n_classes=2, drop=0.25)
-    ig_random = compute_ig_map(random_model, X_test_target)
+        # 1. Mạng EEGNet TRỌNG SỐ NGẪU NHIÊN (Sanity Check - Untrained)
+        torch.manual_seed(SEED)
+        random_model = EEGNet(n_ch=n_channels, n_times=n_times, n_classes=2, drop=0.5)
+        ig_random = compute_ig_map(random_model, X_test_target, baseline_1d=fill_1d)
 
-    # 2. Mạng EEGNet ĐÃ HUẤN LUYỆN (Ưu tiên nạp bundle TV4 nếu khớp kích thước, hoặc train tại chỗ)
-    trained_model, model_source = _train_or_load_eegnet_for_explain(X_norm, y, train_idx)
-    ig_trained = compute_ig_map(trained_model, X_test_target)
+        # 2. Mạng EEGNet ĐÃ HUẤN LUYỆN
+        trained_model, model_source = _train_or_load_eegnet_for_explain(X_norm, y, train_idx)
+        ig_trained = compute_ig_map(trained_model, X_test_target, baseline_1d=fill_1d)
 
-    # 3. Tính bản đồ t-statistic sinh lý học của sóng hiệu ERP (Target - Standard)
-    X_target_raw = X[y == 1]
-    X_std_raw = X[y == 0]
-    t_stat_map, _ = ttest_ind(X_target_raw, X_std_raw, axis=0, equal_var=False)
+        # 3. Tính bản đồ t-statistic sinh lý học của sóng hiệu ERP trên cùng lưới 128 Hz, 0.0–0.8 s
+        t_stat_map, _ = ttest_ind(X[y == 1], X[y == 0], axis=0, equal_var=False)
 
     # Kiểm định tương quan hạng Spearman giữa |IG| và |t-stat ERP|
     rho_random, p_random = spearmanr(np.abs(ig_random).ravel(), np.abs(t_stat_map).ravel())
@@ -824,9 +997,14 @@ def run_ig_and_sanity_check(epochs_list, loaded_subs, data_version="v0"):
     fig_path = figstyle.save(fig, "fig10_ig_sanity_check", folder=FIGURES_DIR, save_pdf=True, close=True)
 
     # 4. Chạy Spatiotemporal Occlusion trên mạng EEGNet đã huấn luyện
-    df_occ = run_eegnet_occlusion(
-        trained_model, X_test_norm, y_test, times=times, ch_names=ch_names, data_version=data_version
-    )
+    if df_occ_precomputed is not None:
+        df_occ = df_occ_precomputed
+        save_occlusion_outputs(df_occ, data_version=data_version)
+    else:
+        df_occ = run_eegnet_occlusion(
+            trained_model, X_test_norm, y_test, times=times, ch_names=ch_names,
+            data_version=data_version, fill_1d=fill_1d,
+        )
 
     return {
         "rho_random": float(rho_random),
@@ -840,6 +1018,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-version", default="v0", choices=["v0", "v1"], help="Phiên bản dữ liệu (v0 hoặc v1)")
     parser.add_argument("--subjects", nargs="+", default=None, help="Danh sách đối tượng (mặc định: tự động theo data-version)")
+    parser.add_argument("--baseline-mode", default="zero_uv", choices=["zero_uv", "train_mean"],
+                        help="Baseline cho IG & Occlusion: zero_uv (0 µV) hoặc train_mean (0.0 sau chuẩn hóa)")
     parser.add_argument("--skip-time-resolved", action="store_true", help="Bỏ qua bước 1 nếu đã chạy xong")
     args = parser.parse_args()
 
@@ -875,7 +1055,7 @@ def main():
     run_haufe_activation_pattern(epochs_list, loaded_subs, data_version=args.data_version)
 
     # 5. Chạy Integrated Gradients, Sanity Check (Hình 10) & Spatiotemporal Occlusion (Tuần 2)
-    run_ig_and_sanity_check(epochs_list, loaded_subs, data_version=args.data_version)
+    run_ig_and_sanity_check(epochs_list, loaded_subs, data_version=args.data_version, baseline_mode=args.baseline_mode)
 
     print("\n" + "=" * 70)
     print("HOÀN TẤT scripts/05_explain.py!")

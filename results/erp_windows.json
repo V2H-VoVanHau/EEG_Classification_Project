@@ -1,0 +1,29 @@
+{
+  "method": "literature windows (a); not selected from difference waves",
+  "components": {
+    "P3a": {
+      "channel": "Fz",
+      "rare": "distractor",
+      "window_s": [
+        0.25,
+        0.4
+      ],
+      "wide_window_s": [
+        0.2,
+        0.45
+      ]
+    },
+    "P3b": {
+      "channel": "Pz",
+      "rare": "target",
+      "window_s": [
+        0.3,
+        0.6
+      ],
+      "wide_window_s": [
+        0.25,
+        0.7
+      ]
+    }
+  }
+}

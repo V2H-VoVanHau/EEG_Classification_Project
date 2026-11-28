@@ -2,6 +2,8 @@ from extract_features import *
 from process_data import load_data
 from sklearn.metrics import balanced_accuracy_score
 from train_lda_pipeline import train_lda_pipeline, train_lda_pipeline_with_feat
+from make_predictions import run_all_subjects_and_folds, run_all_cross_subjects
+
 # X_train, y_train, X_test, y_test, test_indices = load_data('03', 'fold_3', flatten=False)
 
 # sfreq = 250  # Tần số lấy mẫu 250Hz
@@ -178,37 +180,26 @@ def visualize_train_data(X_train, y_train, sfreq=250, tmin=-0.2, save_dir="plots
     plot_xdawn_comparison(X_train, y_train, sfreq=sfreq, tmin=tmin, save_dir=save_dir)
     print(f"--- Hoàn tất! Tất cả biểu đồ đã lưu tại thư mục '{save_dir}/' ---")
 
-# --- Ví dụ cách chạy trực tiếp ---
-if __name__ == "__main__":
-# 1. Cấu hình thông số test
-    SUB_ID = "03"
-    FOLD_NAME = "fold_3"
-    OUTPUT_FILE = "sub03_fold3_lda_baseline_with_features.csv"
+import pandas as pd
+# 1. Đọc file kết quả within_subject để lấy chuẩn metadata
+df_within = pd.read_csv("tv3_predictions.csv")
+# standard_data_version = df_within["data_version"].iloc[0]
+standard_folds_hash = df_within["folds_hash"].iloc[0]
 
-    print(f"=== BẮT ĐẦU TEST HYPERPIPE LDA ON SUB-{SUB_ID} [{FOLD_NAME}] ===")
-    
-    try:
-        # 2. Gọi hàm huấn luyện
-        df_results = train_lda_pipeline_with_feat(
-            sub_id=SUB_ID, 
-            fold_name=FOLD_NAME, 
-            file_name=OUTPUT_FILE
-        )
-        
-        # 3. Kiểm tra và hiển thị kết quả xuất ra
-        print("\n=== KIỂM TRA FILE KẾT QUẢ DỰ ĐOÁN TẬP TEST ===")
-        print(f"Tổng số mẫu dự đoán: {len(df_results)}")
-        print("\n5 dòng đầu tiên của file kết quả:")
-        print(df_results.head())
-        
-        print("\nPhân bố nhãn thực tế vs nhãn dự đoán trên tập Test:")
-        print("True labels:\n", df_results['true_label'].value_counts())
-        print("Predictions:\n", df_results['prediction'].value_counts())
+# 2. Đọc file cross_subject vừa tải về
+df_cross = pd.read_csv("final_predictions_cross_subject_svm.csv")
 
-        # Tính Balanced Accuracy nhanh trên tập Test
+# 3. Bổ sung 2 cột còn thiếu
+# df_cross["data_version"] = standard_data_version
+df_cross["folds_hash"] = standard_folds_hash
 
-        test_bacc = balanced_accuracy_score(df_results['true_label'], df_results['prediction'])
-        print(f"\n[Test Hold-out] Balanced Accuracy: {test_bacc:.4f}")
+# 4. Sắp xếp lại đúng thứ tự 10 cột chuẩn
+cols_order = [
+    'scheme', 'subject', 'fold', 'model', 'seed', 
+    'trial_id', 'y_true', 'y_score', 'data_version', 'folds_hash'
+]
+df_cross = df_cross[cols_order]
 
-    except Exception as e:
-        print(f"\n[X] Lỗi trong quá trình chạy test: {e}")
+# 5. Lưu lại file hoàn chỉnh
+df_cross.to_csv("final_predictions_cross_subject_svm.csv", index=False)
+print("Đã cập nhật xong! Các cột hiện tại:", list(df_cross.columns))
